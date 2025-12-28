@@ -66,7 +66,7 @@ def get_or_create_location(cursor, brand_id: int, name: str, platform: str, plat
     return cursor.lastrowid
 
 
-def import_csv(filepath: Path, cursor) -> dict:
+def import_csv(filepath: Path, cursor, verbose: bool = False) -> dict:
     """Import a single CSV file. Returns stats."""
     stats = {"orders": 0, "skipped": 0, "errors": []}
 
@@ -77,10 +77,19 @@ def import_csv(filepath: Path, cursor) -> dict:
         return stats
 
     # Parse the CSV
-    result = parse_deliveroo_invoice(str(filepath))
+    result = parse_deliveroo_invoice(str(filepath), verbose=verbose)
 
     if result.errors:
         stats["errors"] = result.errors
+        if verbose:
+            for err in result.errors:
+                print(f"    Parse error: {err}")
+        return stats
+
+    if not result.orders:
+        stats["errors"].append("No orders found in file")
+        if verbose:
+            print(f"    No orders found")
         return stats
 
     # Extract brand from filename or restaurant name
@@ -141,8 +150,13 @@ def import_csv(filepath: Path, cursor) -> dict:
 
 def main():
     """Import all CSVs from downloads directory."""
+    import sys
+    verbose = '-v' in sys.argv or '--verbose' in sys.argv
+
     print(f"Importing CSVs from {DOWNLOADS_DIR}")
     print(f"Database: {DB_PATH}")
+    if verbose:
+        print("Verbose mode: ON")
     print("=" * 60)
 
     if not DOWNLOADS_DIR.exists():
@@ -164,20 +178,22 @@ def main():
     total_skipped = 0
     total_errors = 0
     already_imported = 0
+    error_files = []
 
     for i, filepath in enumerate(sorted(csv_files), 1):
-        print(f"[{i}/{len(csv_files)}] {filepath.name[:50]}...", end=" ")
+        print(f"[{i}/{len(csv_files)}] {filepath.name[:50]}...")
 
-        stats = import_csv(filepath, cursor)
+        stats = import_csv(filepath, cursor, verbose=verbose)
 
         if stats["skipped"] == -1:
-            print("SKIP (already imported)")
+            print("  -> SKIP (already imported)")
             already_imported += 1
         elif stats["errors"]:
-            print(f"ERROR: {stats['errors'][0][:50]}")
+            print(f"  -> ERROR: {stats['errors'][0]}")
+            error_files.append((filepath.name, stats["errors"]))
             total_errors += 1
         else:
-            print(f"OK ({stats['orders']} orders)")
+            print(f"  -> OK ({stats['orders']} orders)")
             total_orders += stats["orders"]
             total_skipped += stats["skipped"]
 
@@ -202,6 +218,15 @@ def main():
     print(f"Orders:    {orders} total ({total_orders} new)")
     print(f"Skipped:   {already_imported} files (already imported)")
     print(f"Errors:    {total_errors}")
+
+    if error_files:
+        print("\n" + "=" * 60)
+        print("FILES WITH ERRORS:")
+        print("=" * 60)
+        for fname, errors in error_files[:10]:  # Show first 10
+            print(f"  {fname}")
+            for err in errors[:2]:  # Show first 2 errors per file
+                print(f"    - {err}")
 
     conn.close()
 
