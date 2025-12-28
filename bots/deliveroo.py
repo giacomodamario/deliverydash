@@ -360,8 +360,9 @@ class DeliverooBot(BaseBot):
             self.logger.info(f"Downloading CSV #{index+1} (invoice: {invoice_num})...")
 
             # Use Playwright's native download - expect download BEFORE clicking
-            with self.page.expect_download(timeout=30000) as download_info:
-                csv_link.click()
+            # Use JavaScript click instead of Playwright click for better download triggering
+            with self.page.expect_download(timeout=60000) as download_info:
+                csv_link.evaluate("el => el.click()")
 
             download = download_info.value
 
