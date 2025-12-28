@@ -85,12 +85,48 @@ h2 {
     color: var(--gray-700);
 }
 
+/* Dashboard Header */
+.dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.dashboard-header h1 {
+    margin-bottom: 0;
+}
+
+.date-range-picker {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.date-range-picker .btn.active {
+    background: var(--primary);
+    color: white;
+}
+
+.date-label {
+    color: var(--gray-500);
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+}
+
 /* Stats Grid */
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 1rem;
-    margin-bottom: 2rem;
+    margin-bottom: 1.5rem;
+}
+
+.stats-grid-5 {
+    grid-template-columns: repeat(5, 1fr);
+}
+
+.stats-grid-4 {
+    grid-template-columns: repeat(4, 1fr);
 }
 
 .stat-card {
@@ -98,6 +134,11 @@ h2 {
     padding: 1.5rem;
     border-radius: 8px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.stat-card-compact {
+    padding: 1rem 1.5rem;
+    text-align: center;
 }
 
 .stat-value {
@@ -112,12 +153,42 @@ h2 {
     margin-top: 0.25rem;
 }
 
-/* Grid */
+.stat-trend {
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-top: 0.5rem;
+}
+
+.stat-trend.up {
+    color: var(--success);
+}
+
+.stat-trend.down {
+    color: var(--danger);
+}
+
+.stat-trend.neutral {
+    color: var(--gray-500);
+}
+
+.stat-trend.large {
+    font-size: 1.5rem;
+    margin-top: 0.25rem;
+}
+
+/* Grids */
 .grid-2 {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    grid-template-columns: repeat(2, 1fr);
     gap: 1.5rem;
-    margin-bottom: 2rem;
+    margin-bottom: 1.5rem;
+}
+
+.grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
 }
 
 /* Cards */
@@ -127,6 +198,193 @@ h2 {
     border-radius: 8px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     margin-bottom: 1.5rem;
+}
+
+.grid-2 .card,
+.grid-3 .card {
+    margin-bottom: 0;
+}
+
+/* Metric Rows */
+.metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--gray-100);
+}
+
+.metric-row:last-child {
+    border-bottom: none;
+}
+
+.metric-row.total {
+    border-top: 2px solid var(--gray-200);
+    margin-top: 0.5rem;
+    padding-top: 1rem;
+    font-weight: 600;
+}
+
+.metric-label {
+    color: var(--gray-700);
+}
+
+.metric-value {
+    font-weight: 600;
+}
+
+.metric-value.danger {
+    color: var(--danger);
+}
+
+.metric-value.success {
+    color: var(--success);
+}
+
+.metric-value.warning {
+    color: var(--warning);
+}
+
+/* Day Patterns */
+.pattern-highlights {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.pattern-item {
+    padding: 1rem;
+    border-radius: 6px;
+    background: var(--gray-50);
+}
+
+.pattern-item.best {
+    border-left: 3px solid var(--success);
+}
+
+.pattern-item.worst {
+    border-left: 3px solid var(--warning);
+}
+
+.pattern-label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.pattern-value {
+    display: block;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--gray-900);
+}
+
+.pattern-detail {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--gray-500);
+}
+
+/* Day Bars */
+.day-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.day-bar {
+    display: grid;
+    grid-template-columns: 40px 1fr 100px;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.day-label {
+    font-size: 0.85rem;
+    color: var(--gray-700);
+    font-weight: 500;
+}
+
+.bar-track {
+    height: 8px;
+    background: var(--gray-100);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.bar-fill {
+    height: 100%;
+    background: var(--primary);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.day-value {
+    font-size: 0.85rem;
+    color: var(--gray-500);
+    text-align: right;
+}
+
+/* Brand Grid (Index page) */
+.brand-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+}
+
+.brand-card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.2s;
+    border: 2px solid transparent;
+}
+
+.brand-card:hover {
+    border-color: var(--primary);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.brand-name {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--gray-900);
+    margin-bottom: 0.5rem;
+}
+
+.brand-stats {
+    font-size: 0.9rem;
+    color: var(--gray-500);
+    margin-bottom: 1rem;
+}
+
+.brand-stats .separator {
+    margin: 0 0.5rem;
+}
+
+.brand-revenue {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 1rem;
+    border-top: 1px solid var(--gray-100);
+}
+
+.revenue-label {
+    font-size: 0.85rem;
+    color: var(--gray-500);
+}
+
+.revenue-value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--primary);
 }
 
 /* Tables */
@@ -156,6 +414,14 @@ h2 {
 
 .table-striped tbody tr:nth-child(odd) {
     background: var(--gray-50);
+}
+
+.text-danger {
+    color: var(--danger);
+}
+
+.text-success {
+    color: var(--success);
 }
 
 /* Buttons */
@@ -366,12 +632,23 @@ code {
 }
 
 /* Responsive */
+@media (max-width: 1200px) {
+    .stats-grid-5 {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .stats-grid-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
 @media (max-width: 768px) {
     .container {
         padding: 1rem;
     }
 
-    .grid-2 {
+    .grid-2,
+    .grid-3 {
         grid-template-columns: 1fr;
     }
 
@@ -379,7 +656,24 @@ code {
         padding: 1rem;
     }
 
-    .stats-grid {
+    .stats-grid,
+    .stats-grid-5,
+    .stats-grid-4 {
         grid-template-columns: repeat(2, 1fr);
+    }
+
+    .dashboard-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .date-range-picker {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .pattern-highlights {
+        grid-template-columns: 1fr;
     }
 }
