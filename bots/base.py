@@ -190,6 +190,71 @@ class BaseBot(ABC):
             pass  # Timeout is OK, page might have persistent connections
         time.sleep(0.5)  # Extra small wait for JS rendering
 
+    def dismiss_cookie_consent(self, timeout: int = 5000) -> bool:
+        """
+        Dismiss cookie consent popups (OneTrust, CookieBot, etc.).
+
+        This handles common cookie consent implementations across platforms.
+        Call this after navigating to a new page before interacting with elements.
+
+        Returns:
+            True if a popup was found and dismissed, False otherwise
+        """
+        # Common cookie consent button selectors (in priority order)
+        cookie_selectors = [
+            # OneTrust (used by Deliveroo and many others)
+            '#onetrust-accept-btn-handler',
+            '#onetrust-pc-btn-handler',
+            'button[id*="onetrust"]',
+
+            # Generic accept buttons (multiple languages)
+            'button:has-text("Accept All")',
+            'button:has-text("Accept all")',
+            'button:has-text("Accept Cookies")',
+            'button:has-text("Accept cookies")',
+            'button:has-text("Accept")',
+            'button:has-text("Accetta tutti")',
+            'button:has-text("Accetta")',
+            'button:has-text("Accepter tout")',
+            'button:has-text("Accepter")',
+            'button:has-text("Akzeptieren")',
+            'button:has-text("Alle akzeptieren")',
+
+            # CookieBot
+            '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll',
+            '#CybotCookiebotDialogBodyButtonAccept',
+
+            # Generic patterns
+            '[data-testid="cookie-accept"]',
+            '[data-testid="accept-cookies"]',
+            '.cookie-consent-accept',
+            '.cc-accept',
+            '.cc-allow',
+            '#cookie-accept',
+            '#accept-cookies',
+
+            # Aria labels
+            '[aria-label="Accept cookies"]',
+            '[aria-label="Accept all cookies"]',
+        ]
+
+        self.logger.info("Looking for cookie consent popup...")
+
+        for selector in cookie_selectors:
+            try:
+                button = self.page.locator(selector).first
+                if button.is_visible(timeout=500):
+                    self.logger.info(f"Found cookie consent button: {selector}")
+                    button.click()
+                    time.sleep(0.5)  # Wait for popup to dismiss
+                    self.logger.info("Cookie consent dismissed")
+                    return True
+            except Exception:
+                continue
+
+        self.logger.info("No cookie consent popup found")
+        return False
+
     @abstractmethod
     def login(self) -> bool:
         """

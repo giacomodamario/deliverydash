@@ -47,6 +47,9 @@ class DeliverooBot(BaseBot):
         # Wait for the page to load
         self.page.wait_for_load_state("networkidle")
 
+        # Dismiss cookie consent popup if present
+        self.dismiss_cookie_consent()
+
         # Take a screenshot to see what we're dealing with
         self.screenshot("login_page")
 
