@@ -49,20 +49,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
 
         <form method="POST" class="login-form">
-            <div class="form-group">
-                <label for="email">Email</label>
-                <input type="email" id="email" name="email" required autofocus
-                    placeholder="admin@example.com"
-                    value="<?= h($_POST['email'] ?? '') ?>">
-            </div>
+            <label for="email">Email</label>
+            <input type="email" name="email" id="email" required placeholder="admin@example.com">
 
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required
-                    placeholder="Enter your password">
-            </div>
+            <label for="password">Password</label>
+            <input type="password" name="password" id="password" required placeholder="Enter password">
 
-            <button type="submit" class="btn btn-primary btn-block">Login</button>
+            <button type="submit" class="btn btn-primary btn-block">Log In</button>
         </form>
 
         <p class="login-hint">
