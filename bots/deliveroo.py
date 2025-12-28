@@ -110,6 +110,23 @@ class DeliverooBot(BaseBot):
         # Dismiss any Deliveroo-specific popups
         self._dismiss_popups()
 
+        # Check if already logged in (from saved session)
+        current_url = self.page.url
+        if "/home" in current_url or "/analytics" in current_url or "/invoices" in current_url:
+            self.logger.info(f"Already logged in (URL: {current_url}), skipping login")
+            self.screenshot("01_already_logged_in")
+            return True
+
+        # Also check if sidebar with Invoices link is visible
+        try:
+            invoices_link = self.page.locator(self.SELECTORS["invoices_sidebar"]).first
+            if invoices_link.is_visible(timeout=2000):
+                self.logger.info("Already logged in (found Invoices link), skipping login")
+                self.screenshot("01_already_logged_in")
+                return True
+        except Exception:
+            pass
+
         # Take a screenshot
         self.screenshot("01_login_page")
 
