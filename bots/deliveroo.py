@@ -2,6 +2,7 @@
 
 import re
 import time
+import requests
 from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
@@ -349,7 +350,7 @@ class DeliverooBot(BaseBot):
         return info
 
     def _download_csv(self, csv_link, index: int) -> Optional[Path]:
-        """Download a CSV file using Playwright's native download handling."""
+        """Download a CSV file by fetching href directly with session cookies."""
         try:
             # Extract invoice info for naming
             invoice_info = self._extract_invoice_info_from_link(csv_link)
@@ -357,23 +358,56 @@ class DeliverooBot(BaseBot):
             period = invoice_info.get("period") or datetime.now().strftime("%Y%m%d")
             period_clean = re.sub(r'[/\s]+', '-', period)
 
+            # Get the href from the link
+            href = csv_link.get_attribute("href")
+            if not href:
+                self.logger.warning(f"CSV link #{index+1} has no href attribute")
+                return None
+
+            # Make href absolute if needed
+            if href.startswith("/"):
+                href = f"https://partner-hub.deliveroo.com{href}"
+            elif not href.startswith("http"):
+                href = f"https://partner-hub.deliveroo.com/{href}"
+
             self.logger.info(f"Downloading CSV #{index+1} (invoice: {invoice_num})...")
+            self.logger.debug(f"CSV URL: {href}")
 
-            # Use Playwright's native download - expect download BEFORE clicking
-            # Use JavaScript click instead of Playwright click for better download triggering
-            with self.page.expect_download(timeout=60000) as download_info:
-                csv_link.evaluate("el => el.click()")
+            # Create a requests session with all browser cookies
+            session = requests.Session()
 
-            download = download_info.value
+            # Get all cookies from browser and add to session
+            browser_cookies = self.page.context.cookies()
+            for cookie in browser_cookies:
+                session.cookies.set(
+                    cookie['name'],
+                    cookie['value'],
+                    domain=cookie.get('domain', ''),
+                    path=cookie.get('path', '/')
+                )
 
-            # Use suggested filename or generate one
-            suggested = download.suggested_filename
-            if suggested and suggested.endswith('.csv'):
-                filename = suggested
-            else:
-                filename = f"deliveroo_{period_clean}_{invoice_num}.csv"
+            # Download with browser-like headers
+            response = session.get(
+                href,
+                headers={
+                    'User-Agent': self.page.evaluate("() => navigator.userAgent"),
+                    'Accept': 'text/csv,application/csv,text/plain,*/*',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Referer': self.page.url,
+                    'Origin': 'https://partner-hub.deliveroo.com',
+                },
+                allow_redirects=True,
+                timeout=60
+            )
 
-            # Clean filename of invalid characters
+            self.logger.debug(f"Response status: {response.status_code}")
+
+            if response.status_code != 200:
+                self.logger.warning(f"Failed to download CSV #{index+1}: HTTP {response.status_code}")
+                return None
+
+            # Generate filename
+            filename = f"deliveroo_{period_clean}_{invoice_num}.csv"
             filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
             save_path = self.downloads_dir / filename
 
@@ -385,16 +419,19 @@ class DeliverooBot(BaseBot):
                 save_path = self.downloads_dir / filename
                 counter += 1
 
-            download.save_as(str(save_path))
-            self.logger.info(f"Downloaded: {save_path.name}")
+            # Write content to file
+            with open(save_path, 'wb') as f:
+                f.write(response.content)
+
+            self.logger.info(f"Downloaded: {save_path.name} ({len(response.content)} bytes)")
 
             # Brief pause between downloads
-            self.page.wait_for_timeout(500)
+            time.sleep(0.5)
 
             return save_path
 
-        except PlaywrightTimeout:
-            self.logger.warning(f"Download timeout for CSV #{index+1}")
+        except requests.RequestException as e:
+            self.logger.warning(f"Request error for CSV #{index+1}: {e}")
         except Exception as e:
             self.logger.error(f"Error downloading CSV #{index+1}: {e}")
 
