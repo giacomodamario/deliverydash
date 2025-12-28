@@ -2,7 +2,6 @@
 
 import re
 import time
-import requests
 from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
@@ -350,7 +349,7 @@ class DeliverooBot(BaseBot):
         return info
 
     def _download_csv(self, csv_link, index: int) -> Optional[Path]:
-        """Download a CSV file from a link using requests with session cookies."""
+        """Download a CSV file using Playwright's native download handling."""
         try:
             # Extract invoice info for naming
             invoice_info = self._extract_invoice_info_from_link(csv_link)
@@ -358,48 +357,21 @@ class DeliverooBot(BaseBot):
             period = invoice_info.get("period") or datetime.now().strftime("%Y%m%d")
             period_clean = re.sub(r'[/\s]+', '-', period)
 
-            # Get the href from the link
-            href = csv_link.get_attribute("href")
-            if not href:
-                self.logger.warning(f"CSV link #{index+1} has no href attribute")
-                return None
+            self.logger.info(f"Downloading CSV #{index+1} (invoice: {invoice_num})...")
 
-            # Make href absolute if needed
-            if href.startswith("/"):
-                href = f"https://partner-hub.deliveroo.com{href}"
-            elif not href.startswith("http"):
-                href = f"https://partner-hub.deliveroo.com/{href}"
+            # Use Playwright's native download - expect download BEFORE clicking
+            with self.page.expect_download(timeout=30000) as download_info:
+                csv_link.click()
 
-            self.logger.info(f"Downloading CSV #{index+1} (invoice: {invoice_num}) from {href[:80]}...")
+            download = download_info.value
 
-            # Get cookies from browser session
-            cookies = self.page.context.cookies()
-            cookie_dict = {c['name']: c['value'] for c in cookies}
+            # Use suggested filename or generate one
+            suggested = download.suggested_filename
+            if suggested and suggested.endswith('.csv'):
+                filename = suggested
+            else:
+                filename = f"deliveroo_{period_clean}_{invoice_num}.csv"
 
-            # Download file using requests with session cookies
-            response = requests.get(
-                href,
-                cookies=cookie_dict,
-                headers={
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Accept': 'text/csv,application/csv,text/plain,*/*',
-                    'Referer': 'https://partner-hub.deliveroo.com/reports/invoices',
-                },
-                timeout=30
-            )
-
-            if response.status_code != 200:
-                self.logger.warning(f"Failed to download CSV #{index+1}: HTTP {response.status_code}")
-                return None
-
-            # Check if we got actual CSV content
-            content_type = response.headers.get('Content-Type', '')
-            if 'html' in content_type.lower():
-                self.logger.warning(f"CSV #{index+1} returned HTML instead of CSV (might need re-auth)")
-                return None
-
-            # Generate filename
-            filename = f"deliveroo_{period_clean}_{invoice_num}.csv"
             # Clean filename of invalid characters
             filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
             save_path = self.downloads_dir / filename
@@ -407,20 +379,21 @@ class DeliverooBot(BaseBot):
             # Handle duplicate filenames
             counter = 1
             while save_path.exists():
-                filename = f"deliveroo_{period_clean}_{invoice_num}_{counter}.csv"
-                filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+                base = filename.rsplit('.', 1)[0]
+                filename = f"{base}_{counter}.csv"
                 save_path = self.downloads_dir / filename
                 counter += 1
 
-            # Write content to file
-            with open(save_path, 'wb') as f:
-                f.write(response.content)
+            download.save_as(str(save_path))
+            self.logger.info(f"Downloaded: {save_path.name}")
 
-            self.logger.info(f"Downloaded: {save_path.name} ({len(response.content)} bytes)")
+            # Brief pause between downloads
+            self.page.wait_for_timeout(500)
+
             return save_path
 
-        except requests.RequestException as e:
-            self.logger.warning(f"Request error downloading CSV #{index+1}: {e}")
+        except PlaywrightTimeout:
+            self.logger.warning(f"Download timeout for CSV #{index+1}")
         except Exception as e:
             self.logger.error(f"Error downloading CSV #{index+1}: {e}")
 
@@ -522,9 +495,6 @@ class DeliverooBot(BaseBot):
                         file_path=file_path,
                         file_type="csv",
                     ))
-
-                # Small delay between downloads
-                time.sleep(0.5)
 
             # Check for more pages
             if self._has_next_page():
