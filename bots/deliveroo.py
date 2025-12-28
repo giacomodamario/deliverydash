@@ -15,7 +15,7 @@ class DeliverooBot(BaseBot):
     """Bot for downloading invoices from Deliveroo Partner Hub."""
 
     PLATFORM_NAME = "deliveroo"
-    LOGIN_URL = "https://partner-hub.deliveroo.com/"
+    LOGIN_URL = "https://restaurant-hub.deliveroo.net/"
 
     # Selectors - these may need adjustment based on actual DOM
     SELECTORS = {

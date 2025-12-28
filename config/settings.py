@@ -1,37 +1,31 @@
 import os
 from pathlib import Path
 from typing import Optional
-from pydantic_settings import BaseSettings
+from dotenv import load_dotenv
+
+# Load .env file
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 
-class DeliverooCredentials(BaseSettings):
+class DeliverooCredentials:
     """Deliveroo partner portal credentials."""
-    email: Optional[str] = None
-    password: Optional[str] = None
-
-    class Config:
-        env_prefix = "DELIVEROO_"
+    email: Optional[str] = os.getenv("DELIVEROO_EMAIL")
+    password: Optional[str] = os.getenv("DELIVEROO_PASSWORD")
 
 
-class GlovoCredentials(BaseSettings):
+class GlovoCredentials:
     """Glovo partner portal credentials."""
-    email: Optional[str] = None
-    password: Optional[str] = None
-
-    class Config:
-        env_prefix = "GLOVO_"
+    email: Optional[str] = os.getenv("GLOVO_EMAIL")
+    password: Optional[str] = os.getenv("GLOVO_PASSWORD")
 
 
-class JustEatCredentials(BaseSettings):
+class JustEatCredentials:
     """Just Eat partner portal credentials."""
-    email: Optional[str] = None
-    password: Optional[str] = None
-
-    class Config:
-        env_prefix = "JUSTEAT_"
+    email: Optional[str] = os.getenv("JUSTEAT_EMAIL")
+    password: Optional[str] = os.getenv("JUSTEAT_PASSWORD")
 
 
-class Settings(BaseSettings):
+class Settings:
     """Main application settings."""
 
     # Paths
@@ -45,14 +39,10 @@ class Settings(BaseSettings):
     slow_mo: int = 100  # Milliseconds between actions (helps with debugging)
     timeout: int = 30000  # Default timeout in milliseconds
 
-    # Credentials (loaded from environment)
-    deliveroo: DeliverooCredentials = DeliverooCredentials()
-    glovo: GlovoCredentials = GlovoCredentials()
-    justeat: JustEatCredentials = JustEatCredentials()
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    # Credentials
+    deliveroo = DeliverooCredentials()
+    glovo = GlovoCredentials()
+    justeat = JustEatCredentials()
 
     def ensure_directories(self):
         """Create necessary directories if they don't exist."""
