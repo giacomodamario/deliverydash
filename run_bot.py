@@ -52,7 +52,7 @@ def main():
     with DeliverooBot(
         email=email,
         password=password,
-        headless=True,  # Headless mode for server environments
+        headless=False,  # Non-headless for debugging - can see browser
     ) as bot:
         invoices = bot.run_full_sync()
 
