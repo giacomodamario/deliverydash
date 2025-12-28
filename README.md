@@ -35,7 +35,7 @@ python main.py parse             # Parse downloaded files (TODO)
 ## Project Structure
 
 ```
-food-delivery/
+delivery-analytics/
 ├── bots/               # Platform-specific download bots
 │   ├── base.py        # Base bot class with common functionality
 │   ├── deliveroo.py   # Deliveroo Partner Hub bot
