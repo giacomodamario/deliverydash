@@ -30,30 +30,19 @@ if ($user_brand_id && get_user_role() !== 'admin') {
         </div>
     </nav>
 
-    <div class="container">
+    <div class="container brand-selector">
         <h1>Select Brand</h1>
 
         <?php if (empty($brands)): ?>
-        <div class="card">
-            <p class="empty">No brands yet. Import some invoices first using <code>python import.py</code></p>
-        </div>
+        <p class="empty">No brands yet. Import some invoices first.</p>
         <?php else: ?>
-        <div class="brand-grid">
+        <ul class="brand-list">
             <?php foreach ($brands as $brand): ?>
-            <a href="brand.php?id=<?= $brand['id'] ?>" class="brand-card">
-                <div class="brand-name"><?= h($brand['name']) ?></div>
-                <div class="brand-stats">
-                    <span><?= $brand['location_count'] ?> location<?= $brand['location_count'] != 1 ? 's' : '' ?></span>
-                    <span class="separator">•</span>
-                    <span><?= number_format($brand['order_count']) ?> orders</span>
-                </div>
-                <div class="brand-revenue">
-                    <span class="revenue-label">Total Gross</span>
-                    <span class="revenue-value"><?= format_money($brand['total_gross']) ?></span>
-                </div>
-            </a>
+            <li>
+                <a href="brand.php?id=<?= $brand['id'] ?>"><?= h($brand['name']) ?></a>
+            </li>
             <?php endforeach; ?>
-        </div>
+        </ul>
         <?php endif; ?>
     </div>
 </body>

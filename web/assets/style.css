@@ -631,8 +631,215 @@ code {
     border-radius: 3px;
 }
 
+/* Info Icon Tooltips */
+.info-icon {
+    display: inline-block;
+    cursor: help;
+    font-size: 0.75rem;
+    color: var(--gray-400);
+    margin-left: 0.25rem;
+}
+
+.info-icon:hover {
+    color: var(--primary);
+}
+
+/* Custom Date Range Form */
+.custom-range-form {
+    background: white;
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.date-form {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.date-form label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    color: var(--gray-700);
+}
+
+.date-form input[type="date"] {
+    padding: 0.5rem;
+    border: 1px solid var(--gray-300);
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+/* Date Info */
+.date-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.date-label {
+    color: var(--gray-500);
+    font-size: 0.9rem;
+    margin-bottom: 0;
+}
+
+.partial-warning {
+    background: #fef3c7;
+    color: #92400e;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+/* Trend Period */
+.trend-period {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: var(--gray-400);
+    margin-top: 0.1rem;
+}
+
+/* Growth Grid */
+.growth-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+}
+
+.growth-card {
+    text-align: center;
+    padding: 1rem;
+    background: var(--gray-50);
+    border-radius: 8px;
+}
+
+.growth-label {
+    font-size: 0.8rem;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+}
+
+.growth-trend {
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.growth-trend.up {
+    color: var(--success);
+}
+
+.growth-trend.down {
+    color: var(--danger);
+}
+
+.growth-trend.neutral {
+    color: var(--gray-500);
+}
+
+.growth-period {
+    font-size: 0.75rem;
+    color: var(--gray-700);
+    margin-top: 0.5rem;
+}
+
+.growth-vs {
+    font-size: 0.7rem;
+    color: var(--gray-400);
+}
+
+/* Payment Summary */
+.payment-summary {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--gray-200);
+}
+
+.payment-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    font-size: 0.9rem;
+    color: var(--gray-600);
+}
+
+/* Chart Header */
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.chart-header h2 {
+    margin-bottom: 0;
+}
+
+.chart-controls select {
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--gray-300);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    background: white;
+    cursor: pointer;
+}
+
+/* Brand Selector (Simple List) */
+.brand-selector {
+    max-width: 600px;
+}
+
+.brand-list {
+    list-style: none;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.brand-list li {
+    border-bottom: 1px solid var(--gray-100);
+}
+
+.brand-list li:last-child {
+    border-bottom: none;
+}
+
+.brand-list a {
+    display: block;
+    padding: 1rem 1.5rem;
+    color: var(--gray-900);
+    text-decoration: none;
+    font-size: 1.1rem;
+    transition: all 0.2s;
+}
+
+.brand-list a:hover {
+    background: var(--gray-50);
+    color: var(--primary);
+    padding-left: 2rem;
+}
+
+/* Metric Value Small Text */
+.metric-value small {
+    font-weight: 400;
+    color: var(--gray-500);
+    font-size: 0.8rem;
+}
+
 /* Responsive */
 @media (max-width: 1200px) {
+    .growth-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
     .stats-grid-5 {
         grid-template-columns: repeat(3, 1fr);
     }
@@ -662,6 +869,10 @@ code {
         grid-template-columns: repeat(2, 1fr);
     }
 
+    .growth-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
     .dashboard-header {
         flex-direction: column;
         align-items: flex-start;
@@ -671,9 +882,25 @@ code {
     .date-range-picker {
         width: 100%;
         justify-content: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .date-form {
+        flex-wrap: wrap;
     }
 
     .pattern-highlights {
         grid-template-columns: 1fr;
+    }
+
+    .chart-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+
+    .date-info {
+        flex-direction: column;
+        align-items: flex-start;
     }
 }

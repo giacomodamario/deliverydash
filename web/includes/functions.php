@@ -19,92 +19,134 @@ function format_date(string $date): string {
     return date('d/m/Y', strtotime($date));
 }
 
+function format_date_short(string $date): string {
+    return date('M j', strtotime($date));
+}
+
 function h(string $str): string {
     return htmlspecialchars($str, ENT_QUOTES, 'UTF-8');
 }
 
-function format_trend(float $current, float $previous): array {
+function format_trend(float $current, float $previous, string $prev_label = ''): array {
     if ($previous == 0) {
-        return ['value' => 0, 'direction' => 'neutral', 'label' => '—'];
+        return ['value' => 0, 'direction' => 'neutral', 'label' => '—', 'comparison' => ''];
     }
     $change = (($current - $previous) / $previous) * 100;
     $direction = $change > 0 ? 'up' : ($change < 0 ? 'down' : 'neutral');
     return [
         'value' => abs($change),
         'direction' => $direction,
-        'label' => ($change >= 0 ? '+' : '') . number_format($change, 1) . '%'
+        'label' => ($change >= 0 ? '+' : '') . number_format($change, 1) . '%',
+        'comparison' => $prev_label
     ];
 }
 
 // === DATE RANGE HELPERS ===
 
-function get_date_range(string $range): array {
-    $now = new DateTime();
-    $today = $now->format('Y-m-d');
+function get_last_order_date(): string {
+    $result = query_one("SELECT MAX(order_date) as last_date FROM orders");
+    return $result['last_date'] ?? date('Y-m-d');
+}
+
+function get_date_range(string $range, ?string $custom_start = null, ?string $custom_end = null): array {
+    $last_date = new DateTime(get_last_order_date());
+    $end_date = $last_date->format('Y-m-d');
+
+    // Custom date range
+    if ($range === 'custom' && $custom_start && $custom_end) {
+        $start = new DateTime($custom_start);
+        $end = new DateTime($custom_end);
+        $days = $start->diff($end)->days + 1;
+        $prev_end = (clone $start)->modify('-1 day');
+        $prev_start = (clone $prev_end)->modify("-" . ($days - 1) . " days");
+
+        return [
+            'start' => $start->format('Y-m-d'),
+            'end' => $end->format('Y-m-d'),
+            'prev_start' => $prev_start->format('Y-m-d'),
+            'prev_end' => $prev_end->format('Y-m-d'),
+            'label' => format_date_short($start->format('Y-m-d')) . ' - ' . format_date_short($end->format('Y-m-d')),
+            'prev_label' => format_date_short($prev_start->format('Y-m-d')) . ' - ' . format_date_short($prev_end->format('Y-m-d')),
+            'days' => $days,
+            'is_partial' => false
+        ];
+    }
 
     switch ($range) {
-        case 'today':
-            return [
-                'start' => $today,
-                'end' => $today,
-                'prev_start' => (clone $now)->modify('-1 day')->format('Y-m-d'),
-                'prev_end' => (clone $now)->modify('-1 day')->format('Y-m-d'),
-                'label' => 'Today'
-            ];
         case 'week':
-            $start = (clone $now)->modify('monday this week')->format('Y-m-d');
-            $prev_start = (clone $now)->modify('monday last week')->format('Y-m-d');
-            $prev_end = (clone $now)->modify('sunday last week')->format('Y-m-d');
+            $start = (clone $last_date)->modify('monday this week')->format('Y-m-d');
+            $prev_start = (clone $last_date)->modify('monday last week')->format('Y-m-d');
+            $prev_end = (clone $last_date)->modify('sunday last week')->format('Y-m-d');
+            $days_in_period = (new DateTime($end_date))->diff(new DateTime($start))->days + 1;
+            // For equivalent comparison, use same number of days from last week
+            $prev_end_adj = (clone (new DateTime($prev_start)))->modify("+".($days_in_period-1)." days")->format('Y-m-d');
             return [
                 'start' => $start,
-                'end' => $today,
+                'end' => $end_date,
                 'prev_start' => $prev_start,
-                'prev_end' => $prev_end,
-                'label' => 'This Week'
+                'prev_end' => $prev_end_adj,
+                'label' => 'This Week',
+                'prev_label' => 'vs ' . format_date_short($prev_start) . ' - ' . format_date_short($prev_end_adj),
+                'days' => $days_in_period,
+                'is_partial' => $days_in_period < 7
             ];
         case 'month':
-            $start = $now->format('Y-m-01');
-            $prev_start = (clone $now)->modify('first day of last month')->format('Y-m-d');
-            $prev_end = (clone $now)->modify('last day of last month')->format('Y-m-d');
+            $start = $last_date->format('Y-m-01');
+            $prev_start = (clone $last_date)->modify('first day of last month')->format('Y-m-d');
+            $days_in_period = (new DateTime($end_date))->diff(new DateTime($start))->days + 1;
+            $prev_end_adj = (clone (new DateTime($prev_start)))->modify("+".($days_in_period-1)." days")->format('Y-m-d');
             return [
                 'start' => $start,
-                'end' => $today,
+                'end' => $end_date,
                 'prev_start' => $prev_start,
-                'prev_end' => $prev_end,
-                'label' => 'This Month'
+                'prev_end' => $prev_end_adj,
+                'label' => 'This Month',
+                'prev_label' => 'vs ' . format_date_short($prev_start) . ' - ' . format_date_short($prev_end_adj),
+                'days' => $days_in_period,
+                'is_partial' => $days_in_period < 28
             ];
         case 'year':
-            $start = $now->format('Y-01-01');
-            $prev_start = (clone $now)->modify('-1 year')->format('Y-01-01');
-            $prev_end = (clone $now)->modify('-1 year')->format('Y-m-d');
+            $start = $last_date->format('Y-01-01');
+            $prev_start = (clone $last_date)->modify('-1 year')->format('Y-01-01');
+            $days_in_period = (new DateTime($end_date))->diff(new DateTime($start))->days + 1;
+            $prev_end_adj = (clone (new DateTime($prev_start)))->modify("+".($days_in_period-1)." days")->format('Y-m-d');
             return [
                 'start' => $start,
-                'end' => $today,
+                'end' => $end_date,
                 'prev_start' => $prev_start,
-                'prev_end' => $prev_end,
-                'label' => 'This Year'
+                'prev_end' => $prev_end_adj,
+                'label' => 'This Year',
+                'prev_label' => 'vs ' . format_date_short($prev_start) . ' - ' . format_date_short($prev_end_adj),
+                'days' => $days_in_period,
+                'is_partial' => true
             ];
-        case 'l4w': // Last 4 weeks
-            $start = (clone $now)->modify('-28 days')->format('Y-m-d');
-            $prev_start = (clone $now)->modify('-56 days')->format('Y-m-d');
-            $prev_end = (clone $now)->modify('-29 days')->format('Y-m-d');
+        case 'l4l': // Like for Like - last 4 weeks
+            $start = (clone $last_date)->modify('-27 days')->format('Y-m-d');
+            $prev_start = (clone $last_date)->modify('-55 days')->format('Y-m-d');
+            $prev_end = (clone $last_date)->modify('-28 days')->format('Y-m-d');
             return [
                 'start' => $start,
-                'end' => $today,
+                'end' => $end_date,
                 'prev_start' => $prev_start,
                 'prev_end' => $prev_end,
-                'label' => 'Last 4 Weeks'
+                'label' => 'Last 4 Weeks',
+                'prev_label' => 'vs ' . format_date_short($prev_start) . ' - ' . format_date_short($prev_end),
+                'days' => 28,
+                'is_partial' => false
             ];
         default: // last 30 days
-            $start = (clone $now)->modify('-30 days')->format('Y-m-d');
-            $prev_start = (clone $now)->modify('-60 days')->format('Y-m-d');
-            $prev_end = (clone $now)->modify('-31 days')->format('Y-m-d');
+            $start = (clone $last_date)->modify('-29 days')->format('Y-m-d');
+            $prev_start = (clone $last_date)->modify('-59 days')->format('Y-m-d');
+            $prev_end = (clone $last_date)->modify('-30 days')->format('Y-m-d');
             return [
                 'start' => $start,
-                'end' => $today,
+                'end' => $end_date,
                 'prev_start' => $prev_start,
                 'prev_end' => $prev_end,
-                'label' => 'Last 30 Days'
+                'label' => 'Last 30 Days',
+                'prev_label' => 'vs ' . format_date_short($prev_start) . ' - ' . format_date_short($prev_end),
+                'days' => 30,
+                'is_partial' => false
             ];
     }
 }
@@ -112,36 +154,11 @@ function get_date_range(string $range): array {
 // === BRAND QUERIES ===
 
 function get_brands(): array {
-    return query("
-        SELECT b.*,
-            COUNT(DISTINCT l.id) as location_count,
-            COUNT(DISTINCT o.id) as order_count,
-            COALESCE(SUM(o.gross_value), 0) as total_gross,
-            COALESCE(SUM(o.net_payout), 0) as total_net
-        FROM brands b
-        LEFT JOIN locations l ON l.brand_id = b.id
-        LEFT JOIN orders o ON o.location_id = l.id
-        GROUP BY b.id
-        ORDER BY total_gross DESC
-    ");
+    return query("SELECT id, name, slug FROM brands ORDER BY name ASC");
 }
 
 function get_brand(int $id): ?array {
     return query_one("SELECT * FROM brands WHERE id = ?", [$id]);
-}
-
-function get_brand_locations(int $brand_id): array {
-    return query("
-        SELECT l.*,
-            COUNT(o.id) as order_count,
-            COALESCE(SUM(o.gross_value), 0) as total_gross,
-            COALESCE(SUM(o.net_payout), 0) as total_net
-        FROM locations l
-        LEFT JOIN orders o ON o.location_id = l.id
-        WHERE l.brand_id = ?
-        GROUP BY l.id
-        ORDER BY total_gross DESC
-    ", [$brand_id]);
 }
 
 // === HERO METRICS ===
@@ -169,39 +186,41 @@ function get_hero_metrics(int $brand_id, string $start, string $end): array {
 function get_hero_metrics_with_trends(int $brand_id, array $date_range): array {
     $current = get_hero_metrics($brand_id, $date_range['start'], $date_range['end']);
     $previous = get_hero_metrics($brand_id, $date_range['prev_start'], $date_range['prev_end']);
+    $prev_label = $date_range['prev_label'] ?? '';
 
     return [
         'gross' => [
             'value' => $current['gross'],
-            'trend' => format_trend($current['gross'], $previous['gross'])
+            'trend' => format_trend($current['gross'], $previous['gross'], $prev_label)
         ],
         'net' => [
             'value' => $current['net'],
-            'trend' => format_trend($current['net'], $previous['net'])
+            'trend' => format_trend($current['net'], $previous['net'], $prev_label)
         ],
         'orders' => [
             'value' => $current['orders'],
-            'trend' => format_trend($current['orders'], $previous['orders'])
+            'trend' => format_trend($current['orders'], $previous['orders'], $prev_label)
         ],
         'aov' => [
             'value' => $current['aov'],
-            'trend' => format_trend($current['aov'], $previous['aov'])
+            'trend' => format_trend($current['aov'], $previous['aov'], $prev_label)
         ],
         'margin' => [
             'value' => $current['margin'],
-            'trend' => format_trend($current['margin'], $previous['margin'])
+            'trend' => format_trend($current['margin'], $previous['margin'], $prev_label)
         ]
     ];
 }
 
 // === PLATFORM COSTS ===
 
-function get_platform_costs(int $brand_id, string $start, string $end): array {
+function get_platform_costs(int $brand_id, string $start, string $end, float $gross = 0): array {
     $sql = "
         SELECT
             COALESCE(SUM(o.commission), 0) as commission,
             COALESCE(SUM(o.refund), 0) as refunds,
-            COALESCE(AVG(o.commission_rate), 0) as avg_rate,
+            COALESCE(SUM(o.gross_value), 0) as period_gross,
+            COALESCE(SUM(o.net_payout), 0) as period_net,
             COALESCE(SUM(o.vat), 0) as vat
         FROM orders o
         JOIN locations l ON o.location_id = l.id
@@ -209,9 +228,21 @@ function get_platform_costs(int $brand_id, string $start, string $end): array {
         AND o.order_date BETWEEN ? AND ?
     ";
     $result = query_one($sql, [$brand_id, $start, $end]) ?: [
-        'commission' => 0, 'refunds' => 0, 'avg_rate' => 0, 'vat' => 0
+        'commission' => 0, 'refunds' => 0, 'period_gross' => 0, 'period_net' => 0, 'vat' => 0
     ];
+
+    // Calculate avg_rate from actual values (commission / gross * 100)
+    $result['avg_rate'] = $result['period_gross'] > 0
+        ? ($result['commission'] / $result['period_gross']) * 100
+        : 0;
+
+    // Calculate refund % of net
+    $result['refund_pct'] = $result['period_net'] > 0
+        ? ($result['refunds'] / $result['period_net']) * 100
+        : 0;
+
     $result['total'] = $result['commission'] + $result['refunds'];
+
     return $result;
 }
 
@@ -223,16 +254,23 @@ function get_promo_stats(int $brand_id, string $start, string $end): array {
             COALESCE(SUM(o.promo_restaurant), 0) as restaurant_promos,
             COALESCE(SUM(o.promo_platform), 0) as platform_promos,
             COALESCE(SUM(o.tips), 0) as tips,
-            COALESCE(SUM(o.adjustments), 0) as adjustments
+            COALESCE(SUM(o.gross_value), 0) as period_gross
         FROM orders o
         JOIN locations l ON o.location_id = l.id
         WHERE l.brand_id = ?
         AND o.order_date BETWEEN ? AND ?
     ";
     $result = query_one($sql, [$brand_id, $start, $end]) ?: [
-        'restaurant_promos' => 0, 'platform_promos' => 0, 'tips' => 0, 'adjustments' => 0
+        'restaurant_promos' => 0, 'platform_promos' => 0, 'tips' => 0, 'period_gross' => 0
     ];
     $result['total_promos'] = $result['restaurant_promos'] + $result['platform_promos'];
+
+    // Calculate percentages of gross
+    $gross = $result['period_gross'];
+    $result['restaurant_pct'] = $gross > 0 ? ($result['restaurant_promos'] / $gross) * 100 : 0;
+    $result['platform_pct'] = $gross > 0 ? ($result['platform_promos'] / $gross) * 100 : 0;
+    $result['total_pct'] = $gross > 0 ? ($result['total_promos'] / $gross) * 100 : 0;
+
     return $result;
 }
 
@@ -255,14 +293,14 @@ function get_order_breakdown(int $brand_id, string $start, string $end): array {
         'cash_orders' => 0, 'card_orders' => 0, 'cash_value' => 0, 'card_value' => 0
     ];
 
-    // By platform
+    // By platform - calculate avg_rate from actual values
     $platform_sql = "
         SELECT
             o.platform,
             COUNT(o.id) as orders,
             SUM(o.gross_value) as gross,
             SUM(o.net_payout) as net,
-            AVG(o.commission_rate) as avg_rate
+            SUM(o.commission) as commission
         FROM orders o
         JOIN locations l ON o.location_id = l.id
         WHERE l.brand_id = ?
@@ -271,6 +309,11 @@ function get_order_breakdown(int $brand_id, string $start, string $end): array {
         ORDER BY gross DESC
     ";
     $platforms = query($platform_sql, [$brand_id, $start, $end]);
+
+    // Calculate avg_rate for each platform
+    foreach ($platforms as &$p) {
+        $p['avg_rate'] = $p['gross'] > 0 ? ($p['commission'] / $p['gross']) * 100 : 0;
+    }
 
     return [
         'cash' => $cash,
@@ -281,44 +324,54 @@ function get_order_breakdown(int $brand_id, string $start, string $end): array {
 // === GROWTH COMPARISONS ===
 
 function get_growth_comparisons(int $brand_id): array {
-    $now = new DateTime();
-    $today = $now->format('Y-m-d');
+    $last_date = new DateTime(get_last_order_date());
+    $end_date = $last_date->format('Y-m-d');
 
     // Week over Week
-    $this_week_start = (clone $now)->modify('monday this week')->format('Y-m-d');
-    $last_week_start = (clone $now)->modify('monday last week')->format('Y-m-d');
-    $last_week_end = (clone $now)->modify('sunday last week')->format('Y-m-d');
+    $this_week_start = (clone $last_date)->modify('monday this week')->format('Y-m-d');
+    $last_week_start = (clone $last_date)->modify('monday last week')->format('Y-m-d');
+    $days_this_week = $last_date->diff(new DateTime($this_week_start))->days + 1;
+    $last_week_end = (clone (new DateTime($last_week_start)))->modify("+".($days_this_week-1)." days")->format('Y-m-d');
 
-    $this_week = get_hero_metrics($brand_id, $this_week_start, $today);
+    $this_week = get_hero_metrics($brand_id, $this_week_start, $end_date);
     $last_week = get_hero_metrics($brand_id, $last_week_start, $last_week_end);
     $wow = format_trend($this_week['gross'], $last_week['gross']);
+    $wow['period'] = format_date_short($this_week_start) . ' - ' . format_date_short($end_date);
+    $wow['vs_period'] = format_date_short($last_week_start) . ' - ' . format_date_short($last_week_end);
 
     // Month over Month
-    $this_month_start = $now->format('Y-m-01');
-    $last_month_start = (clone $now)->modify('first day of last month')->format('Y-m-d');
-    $last_month_end = (clone $now)->modify('last day of last month')->format('Y-m-d');
+    $this_month_start = $last_date->format('Y-m-01');
+    $last_month_start = (clone $last_date)->modify('first day of last month')->format('Y-m-d');
+    $days_this_month = $last_date->diff(new DateTime($this_month_start))->days + 1;
+    $last_month_end = (clone (new DateTime($last_month_start)))->modify("+".($days_this_month-1)." days")->format('Y-m-d');
 
-    $this_month = get_hero_metrics($brand_id, $this_month_start, $today);
+    $this_month = get_hero_metrics($brand_id, $this_month_start, $end_date);
     $last_month = get_hero_metrics($brand_id, $last_month_start, $last_month_end);
     $mom = format_trend($this_month['gross'], $last_month['gross']);
+    $mom['period'] = format_date_short($this_month_start) . ' - ' . format_date_short($end_date);
+    $mom['vs_period'] = format_date_short($last_month_start) . ' - ' . format_date_short($last_month_end);
 
-    // Year over Year
-    $this_year_start = $now->format('Y-01-01');
-    $last_year_start = (clone $now)->modify('-1 year')->format('Y-01-01');
-    $last_year_end = (clone $now)->modify('-1 year')->format('Y-m-d');
+    // Year over Year - same period last year
+    $yoy_end_last_year = (clone $last_date)->modify('-1 year')->format('Y-m-d');
+    $yoy_start_last_year = (clone $last_date)->modify('-1 year')->format('Y-01-01');
+    $this_year_start = $last_date->format('Y-01-01');
 
-    $this_year = get_hero_metrics($brand_id, $this_year_start, $today);
-    $last_year = get_hero_metrics($brand_id, $last_year_start, $last_year_end);
+    $this_year = get_hero_metrics($brand_id, $this_year_start, $end_date);
+    $last_year = get_hero_metrics($brand_id, $yoy_start_last_year, $yoy_end_last_year);
     $yoy = format_trend($this_year['gross'], $last_year['gross']);
+    $yoy['period'] = format_date_short($this_year_start) . ' - ' . format_date_short($end_date);
+    $yoy['vs_period'] = format_date_short($yoy_start_last_year) . ' - ' . format_date_short($yoy_end_last_year);
 
     // Like for Like (L4W vs previous 4 weeks)
-    $l4w_start = (clone $now)->modify('-28 days')->format('Y-m-d');
-    $prev_l4w_start = (clone $now)->modify('-56 days')->format('Y-m-d');
-    $prev_l4w_end = (clone $now)->modify('-29 days')->format('Y-m-d');
+    $l4l_start = (clone $last_date)->modify('-27 days')->format('Y-m-d');
+    $prev_l4l_start = (clone $last_date)->modify('-55 days')->format('Y-m-d');
+    $prev_l4l_end = (clone $last_date)->modify('-28 days')->format('Y-m-d');
 
-    $l4w = get_hero_metrics($brand_id, $l4w_start, $today);
-    $prev_l4w = get_hero_metrics($brand_id, $prev_l4w_start, $prev_l4w_end);
-    $l4l = format_trend($l4w['gross'], $prev_l4w['gross']);
+    $l4l_current = get_hero_metrics($brand_id, $l4l_start, $end_date);
+    $l4l_prev = get_hero_metrics($brand_id, $prev_l4l_start, $prev_l4l_end);
+    $l4l = format_trend($l4l_current['gross'], $l4l_prev['gross']);
+    $l4l['period'] = format_date_short($l4l_start) . ' - ' . format_date_short($end_date);
+    $l4l['vs_period'] = format_date_short($prev_l4l_start) . ' - ' . format_date_short($prev_l4l_end);
 
     return [
         'wow' => $wow,
@@ -331,21 +384,24 @@ function get_growth_comparisons(int $brand_id): array {
 // === DAY PATTERNS ===
 
 function get_day_patterns(int $brand_id, string $start, string $end): array {
+    // Get average daily revenue by day of week
     $sql = "
         SELECT
             strftime('%w', o.order_date) as day_num,
             CASE strftime('%w', o.order_date)
-                WHEN '0' THEN 'Sun'
-                WHEN '1' THEN 'Mon'
-                WHEN '2' THEN 'Tue'
-                WHEN '3' THEN 'Wed'
-                WHEN '4' THEN 'Thu'
-                WHEN '5' THEN 'Fri'
-                WHEN '6' THEN 'Sat'
+                WHEN '0' THEN 'Sunday'
+                WHEN '1' THEN 'Monday'
+                WHEN '2' THEN 'Tuesday'
+                WHEN '3' THEN 'Wednesday'
+                WHEN '4' THEN 'Thursday'
+                WHEN '5' THEN 'Friday'
+                WHEN '6' THEN 'Saturday'
             END as day_name,
-            COUNT(o.id) as orders,
-            SUM(o.gross_value) as gross,
-            AVG(o.gross_value) as avg_order
+            COUNT(DISTINCT o.order_date) as num_days,
+            COUNT(o.id) as total_orders,
+            SUM(o.gross_value) as total_gross,
+            SUM(o.gross_value) / COUNT(DISTINCT o.order_date) as avg_daily_gross,
+            COUNT(o.id) * 1.0 / COUNT(DISTINCT o.order_date) as avg_daily_orders
         FROM orders o
         JOIN locations l ON o.location_id = l.id
         WHERE l.brand_id = ?
@@ -355,19 +411,30 @@ function get_day_patterns(int $brand_id, string $start, string $end): array {
     ";
     $days = query($sql, [$brand_id, $start, $end]);
 
+    // Reorder to start from Monday (1,2,3,4,5,6,0)
+    $reordered = [];
+    foreach ([1,2,3,4,5,6,0] as $target) {
+        foreach ($days as $day) {
+            if ((int)$day['day_num'] === $target) {
+                $reordered[] = $day;
+                break;
+            }
+        }
+    }
+
     $best = null;
     $worst = null;
-    foreach ($days as $day) {
-        if ($best === null || $day['gross'] > $best['gross']) {
+    foreach ($reordered as $day) {
+        if ($best === null || $day['avg_daily_gross'] > $best['avg_daily_gross']) {
             $best = $day;
         }
-        if ($worst === null || $day['gross'] < $worst['gross']) {
+        if ($worst === null || $day['avg_daily_gross'] < $worst['avg_daily_gross']) {
             $worst = $day;
         }
     }
 
     return [
-        'days' => $days,
+        'days' => $reordered,
         'best' => $best,
         'worst' => $worst
     ];
@@ -382,7 +449,11 @@ function get_daily_data(int $brand_id, string $start, string $end): array {
             COUNT(o.id) as orders,
             SUM(o.gross_value) as gross,
             SUM(o.net_payout) as net,
-            SUM(o.commission) as commission
+            SUM(o.commission) as commission,
+            AVG(o.gross_value) as aov,
+            CASE WHEN SUM(o.gross_value) > 0
+                THEN (SUM(o.net_payout) / SUM(o.gross_value)) * 100
+                ELSE 0 END as margin
         FROM orders o
         JOIN locations l ON o.location_id = l.id
         WHERE l.brand_id = ?
@@ -393,36 +464,20 @@ function get_daily_data(int $brand_id, string $start, string $end): array {
     return query($sql, [$brand_id, $start, $end]);
 }
 
-// === RECENT ORDERS ===
+// === KPI INFO TOOLTIPS ===
 
-function get_recent_orders(int $brand_id, int $limit = 50): array {
-    return query("
-        SELECT o.*, l.name as location_name
-        FROM orders o
-        JOIN locations l ON o.location_id = l.id
-        WHERE l.brand_id = ?
-        ORDER BY o.order_date DESC, o.id DESC
-        LIMIT ?
-    ", [$brand_id, $limit]);
-}
-
-// === LOCATION BREAKDOWN ===
-
-function get_location_breakdown(int $brand_id, string $start, string $end): array {
-    return query("
-        SELECT
-            l.id,
-            l.name,
-            l.platform,
-            COUNT(o.id) as orders,
-            COALESCE(SUM(o.gross_value), 0) as gross,
-            COALESCE(SUM(o.net_payout), 0) as net,
-            COALESCE(AVG(o.gross_value), 0) as aov
-        FROM locations l
-        LEFT JOIN orders o ON o.location_id = l.id
-            AND o.order_date BETWEEN ? AND ?
-        WHERE l.brand_id = ?
-        GROUP BY l.id
-        ORDER BY gross DESC
-    ", [$start, $end, $brand_id]);
+function get_kpi_tooltips(): array {
+    return [
+        'gross' => 'Total order value including VAT',
+        'net' => 'Amount received after all platform costs (commission, refunds, fees)',
+        'orders' => 'Total number of orders in the period',
+        'aov' => 'Average Order Value = Gross Revenue / Number of Orders',
+        'margin' => 'Platform Margin = (Net / Gross) × 100 - what you keep after fees',
+        'commission' => 'Platform fee charged on each order',
+        'avg_rate' => 'Average Commission Rate = (Total Commission / Gross) × 100',
+        'refunds' => 'Money returned to customers for cancelled or problematic orders',
+        'restaurant_promos' => 'Discounts funded by your restaurant',
+        'platform_promos' => 'Discounts funded by the delivery platform',
+        'tips' => 'Customer tips received'
+    ];
 }

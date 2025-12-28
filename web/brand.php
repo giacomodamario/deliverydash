@@ -19,7 +19,11 @@ if (!can_view_brand($id)) {
 
 // Date range handling
 $range = $_GET['range'] ?? 'month';
-$date_range = get_date_range($range);
+$custom_start = $_GET['from'] ?? null;
+$custom_end = $_GET['to'] ?? null;
+$date_range = get_date_range($range, $custom_start, $custom_end);
+$last_order_date = get_last_order_date();
+$tooltips = get_kpi_tooltips();
 
 // Fetch all data
 $hero = get_hero_metrics_with_trends($id, $date_range);
@@ -29,8 +33,6 @@ $breakdown = get_order_breakdown($id, $date_range['start'], $date_range['end']);
 $growth = get_growth_comparisons($id);
 $patterns = get_day_patterns($id, $date_range['start'], $date_range['end']);
 $daily_data = get_daily_data($id, $date_range['start'], $date_range['end']);
-$locations = get_location_breakdown($id, $date_range['start'], $date_range['end']);
-$recent_orders = get_recent_orders($id, 25);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -61,55 +63,98 @@ $recent_orders = get_recent_orders($id, 25);
                 <a href="?id=<?= $id ?>&range=week" class="btn btn-small <?= $range === 'week' ? 'active' : '' ?>">This Week</a>
                 <a href="?id=<?= $id ?>&range=month" class="btn btn-small <?= $range === 'month' ? 'active' : '' ?>">This Month</a>
                 <a href="?id=<?= $id ?>&range=year" class="btn btn-small <?= $range === 'year' ? 'active' : '' ?>">This Year</a>
-                <a href="?id=<?= $id ?>&range=l4w" class="btn btn-small <?= $range === 'l4w' ? 'active' : '' ?>">L4W</a>
+                <a href="?id=<?= $id ?>&range=l4l" class="btn btn-small <?= $range === 'l4l' ? 'active' : '' ?>">L4L</a>
+                <button type="button" class="btn btn-small <?= $range === 'custom' ? 'active' : '' ?>" onclick="toggleCustomRange()">Custom</button>
             </div>
         </div>
-        <p class="date-label"><?= h($date_range['label']) ?>: <?= format_date($date_range['start']) ?> — <?= format_date($date_range['end']) ?></p>
+
+        <!-- Custom Date Range Form -->
+        <div id="customRangeForm" class="custom-range-form" style="display: <?= $range === 'custom' ? 'flex' : 'none' ?>;">
+            <form method="GET" class="date-form">
+                <input type="hidden" name="id" value="<?= $id ?>">
+                <input type="hidden" name="range" value="custom">
+                <label>From: <input type="date" name="from" value="<?= h($custom_start ?? $date_range['start']) ?>" max="<?= $last_order_date ?>"></label>
+                <label>To: <input type="date" name="to" value="<?= h($custom_end ?? $date_range['end']) ?>" max="<?= $last_order_date ?>"></label>
+                <button type="submit" class="btn btn-primary btn-small">Apply</button>
+            </form>
+        </div>
+
+        <div class="date-info">
+            <span class="date-label"><?= h($date_range['label']) ?>: <?= format_date($date_range['start']) ?> — <?= format_date($date_range['end']) ?></span>
+            <?php if (!empty($date_range['is_partial'])): ?>
+            <span class="partial-warning">Partial period: data until <?= format_date($last_order_date) ?></span>
+            <?php endif; ?>
+        </div>
 
         <!-- ROW 1: Hero Metrics -->
         <div class="stats-grid stats-grid-5">
             <div class="stat-card">
-                <div class="stat-value"><?= format_money($hero['gross']['value']) ?></div>
-                <div class="stat-label">Gross Revenue</div>
-                <div class="stat-trend <?= $hero['gross']['trend']['direction'] ?>"><?= $hero['gross']['trend']['label'] ?></div>
+                <div class="stat-header">
+                    <span class="stat-value"><?= format_money($hero['gross']['value']) ?></span>
+                </div>
+                <div class="stat-label">Gross Revenue <span class="info-icon" title="<?= h($tooltips['gross']) ?>">ⓘ</span></div>
+                <div class="stat-trend <?= $hero['gross']['trend']['direction'] ?>">
+                    <?= $hero['gross']['trend']['label'] ?>
+                    <span class="trend-period"><?= h($hero['gross']['trend']['comparison']) ?></span>
+                </div>
             </div>
             <div class="stat-card">
-                <div class="stat-value"><?= format_money($hero['net']['value']) ?></div>
-                <div class="stat-label">Net Payout</div>
-                <div class="stat-trend <?= $hero['net']['trend']['direction'] ?>"><?= $hero['net']['trend']['label'] ?></div>
+                <div class="stat-header">
+                    <span class="stat-value"><?= format_money($hero['net']['value']) ?></span>
+                </div>
+                <div class="stat-label">Net Payout <span class="info-icon" title="<?= h($tooltips['net']) ?>">ⓘ</span></div>
+                <div class="stat-trend <?= $hero['net']['trend']['direction'] ?>">
+                    <?= $hero['net']['trend']['label'] ?>
+                    <span class="trend-period"><?= h($hero['net']['trend']['comparison']) ?></span>
+                </div>
             </div>
             <div class="stat-card">
-                <div class="stat-value"><?= number_format($hero['orders']['value']) ?></div>
-                <div class="stat-label">Orders</div>
-                <div class="stat-trend <?= $hero['orders']['trend']['direction'] ?>"><?= $hero['orders']['trend']['label'] ?></div>
+                <div class="stat-header">
+                    <span class="stat-value"><?= number_format($hero['orders']['value']) ?></span>
+                </div>
+                <div class="stat-label">Orders <span class="info-icon" title="<?= h($tooltips['orders']) ?>">ⓘ</span></div>
+                <div class="stat-trend <?= $hero['orders']['trend']['direction'] ?>">
+                    <?= $hero['orders']['trend']['label'] ?>
+                    <span class="trend-period"><?= h($hero['orders']['trend']['comparison']) ?></span>
+                </div>
             </div>
             <div class="stat-card">
-                <div class="stat-value"><?= format_money($hero['aov']['value']) ?></div>
-                <div class="stat-label">Avg Order Value</div>
-                <div class="stat-trend <?= $hero['aov']['trend']['direction'] ?>"><?= $hero['aov']['trend']['label'] ?></div>
+                <div class="stat-header">
+                    <span class="stat-value"><?= format_money($hero['aov']['value']) ?></span>
+                </div>
+                <div class="stat-label">Avg Order Value <span class="info-icon" title="<?= h($tooltips['aov']) ?>">ⓘ</span></div>
+                <div class="stat-trend <?= $hero['aov']['trend']['direction'] ?>">
+                    <?= $hero['aov']['trend']['label'] ?>
+                    <span class="trend-period"><?= h($hero['aov']['trend']['comparison']) ?></span>
+                </div>
             </div>
             <div class="stat-card">
-                <div class="stat-value"><?= format_percent($hero['margin']['value']) ?></div>
-                <div class="stat-label">Net Margin</div>
-                <div class="stat-trend <?= $hero['margin']['trend']['direction'] ?>"><?= $hero['margin']['trend']['label'] ?></div>
+                <div class="stat-header">
+                    <span class="stat-value"><?= format_percent($hero['margin']['value']) ?></span>
+                </div>
+                <div class="stat-label">Net Margin <span class="info-icon" title="<?= h($tooltips['margin']) ?>">ⓘ</span></div>
+                <div class="stat-trend <?= $hero['margin']['trend']['direction'] ?>">
+                    <?= $hero['margin']['trend']['label'] ?>
+                    <span class="trend-period"><?= h($hero['margin']['trend']['comparison']) ?></span>
+                </div>
             </div>
         </div>
 
-        <!-- ROW 2: Platform Costs -->
-        <div class="grid-3">
+        <!-- ROW 2: Platform Costs + Promos -->
+        <div class="grid-2">
             <div class="card">
                 <h2>Platform Costs</h2>
                 <div class="metric-row">
-                    <span class="metric-label">Commission</span>
+                    <span class="metric-label">Commission <span class="info-icon" title="<?= h($tooltips['commission']) ?>">ⓘ</span></span>
                     <span class="metric-value danger"><?= format_money($costs['commission']) ?></span>
                 </div>
                 <div class="metric-row">
-                    <span class="metric-label">Avg Rate</span>
+                    <span class="metric-label">Avg Rate <span class="info-icon" title="<?= h($tooltips['avg_rate']) ?>">ⓘ</span></span>
                     <span class="metric-value"><?= format_percent($costs['avg_rate']) ?></span>
                 </div>
                 <div class="metric-row">
-                    <span class="metric-label">Refunds</span>
-                    <span class="metric-value danger"><?= format_money($costs['refunds']) ?></span>
+                    <span class="metric-label">Refunds <span class="info-icon" title="<?= h($tooltips['refunds']) ?>">ⓘ</span></span>
+                    <span class="metric-value danger"><?= format_money($costs['refunds']) ?> <small>(<?= format_percent($costs['refund_pct']) ?> of net)</small></span>
                 </div>
                 <div class="metric-row total">
                     <span class="metric-label">Total Costs</span>
@@ -117,70 +162,59 @@ $recent_orders = get_recent_orders($id, 25);
                 </div>
             </div>
 
-            <!-- ROW 3: Promos & Marketing -->
             <div class="card">
                 <h2>Promos & Marketing</h2>
                 <div class="metric-row">
-                    <span class="metric-label">Restaurant Funded</span>
-                    <span class="metric-value warning"><?= format_money($promos['restaurant_promos']) ?></span>
+                    <span class="metric-label">Restaurant Funded <span class="info-icon" title="<?= h($tooltips['restaurant_promos']) ?>">ⓘ</span></span>
+                    <span class="metric-value warning"><?= format_money($promos['restaurant_promos']) ?> <small>(<?= format_percent($promos['restaurant_pct']) ?>)</small></span>
                 </div>
                 <div class="metric-row">
-                    <span class="metric-label">Platform Funded</span>
-                    <span class="metric-value success"><?= format_money($promos['platform_promos']) ?></span>
+                    <span class="metric-label">Platform Funded <span class="info-icon" title="<?= h($tooltips['platform_promos']) ?>">ⓘ</span></span>
+                    <span class="metric-value success"><?= format_money($promos['platform_promos']) ?> <small>(<?= format_percent($promos['platform_pct']) ?>)</small></span>
                 </div>
                 <div class="metric-row">
-                    <span class="metric-label">Adjustments</span>
-                    <span class="metric-value"><?= format_money($promos['adjustments']) ?></span>
+                    <span class="metric-label">Tips <span class="info-icon" title="<?= h($tooltips['tips']) ?>">ⓘ</span></span>
+                    <span class="metric-value success"><?= format_money($promos['tips']) ?></span>
                 </div>
                 <div class="metric-row total">
                     <span class="metric-label">Total Promos</span>
-                    <span class="metric-value"><?= format_money($promos['total_promos']) ?></span>
-                </div>
-            </div>
-
-            <!-- ROW 4: Order Breakdown -->
-            <div class="card">
-                <h2>Payment Methods</h2>
-                <div class="metric-row">
-                    <span class="metric-label">Card Orders</span>
-                    <span class="metric-value"><?= number_format($breakdown['cash']['card_orders'] ?? 0) ?> (<?= format_money($breakdown['cash']['card_value'] ?? 0) ?>)</span>
-                </div>
-                <div class="metric-row">
-                    <span class="metric-label">Cash Orders</span>
-                    <span class="metric-value"><?= number_format($breakdown['cash']['cash_orders'] ?? 0) ?> (<?= format_money($breakdown['cash']['cash_value'] ?? 0) ?>)</span>
-                </div>
-                <?php
-                $total_orders = ($breakdown['cash']['card_orders'] ?? 0) + ($breakdown['cash']['cash_orders'] ?? 0);
-                $cash_pct = $total_orders > 0 ? (($breakdown['cash']['cash_orders'] ?? 0) / $total_orders) * 100 : 0;
-                ?>
-                <div class="metric-row total">
-                    <span class="metric-label">Cash %</span>
-                    <span class="metric-value"><?= format_percent($cash_pct) ?></span>
+                    <span class="metric-value"><?= format_money($promos['total_promos']) ?> <small>(<?= format_percent($promos['total_pct']) ?> of gross)</small></span>
                 </div>
             </div>
         </div>
 
-        <!-- ROW 5: Growth Comparisons -->
-        <div class="stats-grid stats-grid-4">
-            <div class="stat-card stat-card-compact">
-                <div class="stat-label">Week over Week</div>
-                <div class="stat-trend large <?= $growth['wow']['direction'] ?>"><?= $growth['wow']['label'] ?></div>
-            </div>
-            <div class="stat-card stat-card-compact">
-                <div class="stat-label">Month over Month</div>
-                <div class="stat-trend large <?= $growth['mom']['direction'] ?>"><?= $growth['mom']['label'] ?></div>
-            </div>
-            <div class="stat-card stat-card-compact">
-                <div class="stat-label">Year over Year</div>
-                <div class="stat-trend large <?= $growth['yoy']['direction'] ?>"><?= $growth['yoy']['label'] ?></div>
-            </div>
-            <div class="stat-card stat-card-compact">
-                <div class="stat-label">L4W vs Prev L4W</div>
-                <div class="stat-trend large <?= $growth['l4l']['direction'] ?>"><?= $growth['l4l']['label'] ?></div>
+        <!-- ROW 3: Growth Comparisons -->
+        <div class="card">
+            <h2>Growth Comparisons</h2>
+            <div class="growth-grid">
+                <div class="growth-card">
+                    <div class="growth-label">Week over Week</div>
+                    <div class="growth-trend <?= $growth['wow']['direction'] ?>"><?= $growth['wow']['label'] ?></div>
+                    <div class="growth-period"><?= h($growth['wow']['period']) ?></div>
+                    <div class="growth-vs">vs <?= h($growth['wow']['vs_period']) ?></div>
+                </div>
+                <div class="growth-card">
+                    <div class="growth-label">Month over Month</div>
+                    <div class="growth-trend <?= $growth['mom']['direction'] ?>"><?= $growth['mom']['label'] ?></div>
+                    <div class="growth-period"><?= h($growth['mom']['period']) ?></div>
+                    <div class="growth-vs">vs <?= h($growth['mom']['vs_period']) ?></div>
+                </div>
+                <div class="growth-card">
+                    <div class="growth-label">Year over Year</div>
+                    <div class="growth-trend <?= $growth['yoy']['direction'] ?>"><?= $growth['yoy']['label'] ?></div>
+                    <div class="growth-period"><?= h($growth['yoy']['period']) ?></div>
+                    <div class="growth-vs">vs <?= h($growth['yoy']['vs_period']) ?></div>
+                </div>
+                <div class="growth-card">
+                    <div class="growth-label">Like for Like (L4L)</div>
+                    <div class="growth-trend <?= $growth['l4l']['direction'] ?>"><?= $growth['l4l']['label'] ?></div>
+                    <div class="growth-period"><?= h($growth['l4l']['period']) ?></div>
+                    <div class="growth-vs">vs <?= h($growth['l4l']['vs_period']) ?></div>
+                </div>
             </div>
         </div>
 
-        <!-- ROW 6: Day Patterns + Platform Breakdown -->
+        <!-- ROW 4: Day Patterns + Platform Breakdown -->
         <div class="grid-2">
             <div class="card">
                 <h2>Day Patterns</h2>
@@ -188,27 +222,28 @@ $recent_orders = get_recent_orders($id, 25);
                 <div class="pattern-highlights">
                     <div class="pattern-item best">
                         <span class="pattern-label">Best Day</span>
-                        <span class="pattern-value"><?= $patterns['best']['day_name'] ?></span>
-                        <span class="pattern-detail"><?= format_money($patterns['best']['gross']) ?> (<?= $patterns['best']['orders'] ?> orders)</span>
+                        <span class="pattern-value"><?= h($patterns['best']['day_name']) ?></span>
+                        <span class="pattern-detail"><?= format_money($patterns['best']['avg_daily_gross']) ?> avg</span>
                     </div>
                     <div class="pattern-item worst">
                         <span class="pattern-label">Slowest Day</span>
-                        <span class="pattern-value"><?= $patterns['worst']['day_name'] ?></span>
-                        <span class="pattern-detail"><?= format_money($patterns['worst']['gross']) ?> (<?= $patterns['worst']['orders'] ?> orders)</span>
+                        <span class="pattern-value"><?= h($patterns['worst']['day_name']) ?></span>
+                        <span class="pattern-detail"><?= format_money($patterns['worst']['avg_daily_gross']) ?> avg</span>
                     </div>
                 </div>
                 <div class="day-bars">
                     <?php
-                    $max_gross = max(array_column($patterns['days'], 'gross') ?: [1]);
+                    $max_gross = max(array_column($patterns['days'], 'avg_daily_gross') ?: [1]);
                     foreach ($patterns['days'] as $day):
-                        $pct = $max_gross > 0 ? ($day['gross'] / $max_gross) * 100 : 0;
+                        $pct = $max_gross > 0 ? ($day['avg_daily_gross'] / $max_gross) * 100 : 0;
+                        $short_name = substr($day['day_name'], 0, 3);
                     ?>
                     <div class="day-bar">
-                        <span class="day-label"><?= $day['day_name'] ?></span>
+                        <span class="day-label"><?= $short_name ?></span>
                         <div class="bar-track">
                             <div class="bar-fill" style="width: <?= $pct ?>%"></div>
                         </div>
-                        <span class="day-value"><?= format_money($day['gross']) ?></span>
+                        <span class="day-value"><?= format_money($day['avg_daily_gross']) ?></span>
                     </div>
                     <?php endforeach; ?>
                 </div>
@@ -242,108 +277,106 @@ $recent_orders = get_recent_orders($id, 25);
                         <?php endforeach; ?>
                     </tbody>
                 </table>
+
+                <!-- Payment Methods -->
+                <div class="payment-summary">
+                    <?php
+                    $total_orders = ($breakdown['cash']['card_orders'] ?? 0) + ($breakdown['cash']['cash_orders'] ?? 0);
+                    $cash_pct = $total_orders > 0 ? (($breakdown['cash']['cash_orders'] ?? 0) / $total_orders) * 100 : 0;
+                    ?>
+                    <div class="payment-item">
+                        <span>Card: <?= number_format($breakdown['cash']['card_orders'] ?? 0) ?> orders</span>
+                        <span><?= format_money($breakdown['cash']['card_value'] ?? 0) ?></span>
+                    </div>
+                    <div class="payment-item">
+                        <span>Cash: <?= number_format($breakdown['cash']['cash_orders'] ?? 0) ?> orders (<?= format_percent($cash_pct) ?>)</span>
+                        <span><?= format_money($breakdown['cash']['cash_value'] ?? 0) ?></span>
+                    </div>
+                </div>
                 <?php else: ?>
                 <p class="empty">No data for this period</p>
                 <?php endif; ?>
             </div>
         </div>
 
-        <!-- Revenue Chart -->
+        <!-- ROW 5: Revenue Chart -->
         <div class="card">
-            <h2>Daily Revenue</h2>
+            <div class="chart-header">
+                <h2>Daily Performance</h2>
+                <div class="chart-controls">
+                    <select id="chartKpi" onchange="updateChart()">
+                        <option value="gross">Gross Revenue</option>
+                        <option value="net">Net Payout</option>
+                        <option value="orders">Orders</option>
+                        <option value="aov">Avg Order Value</option>
+                        <option value="margin">Margin %</option>
+                    </select>
+                </div>
+            </div>
             <canvas id="revenueChart" height="100"></canvas>
-        </div>
-
-        <!-- Locations Breakdown -->
-        <div class="card">
-            <h2>Locations</h2>
-            <?php if (!empty($locations)): ?>
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Location</th>
-                        <th>Platform</th>
-                        <th>Orders</th>
-                        <th>Gross</th>
-                        <th>AOV</th>
-                        <th>Net</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($locations as $loc): ?>
-                    <tr>
-                        <td><?= h($loc['name']) ?></td>
-                        <td><span class="platform-badge <?= h($loc['platform']) ?>"><?= h(ucfirst($loc['platform'])) ?></span></td>
-                        <td><?= number_format($loc['orders']) ?></td>
-                        <td><?= format_money($loc['gross']) ?></td>
-                        <td><?= format_money($loc['aov']) ?></td>
-                        <td><?= format_money($loc['net']) ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-            <?php else: ?>
-            <p class="empty">No locations found</p>
-            <?php endif; ?>
-        </div>
-
-        <!-- Recent Orders -->
-        <div class="card">
-            <h2>Recent Orders</h2>
-            <?php if (!empty($recent_orders)): ?>
-            <table class="table table-striped">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Order ID</th>
-                        <th>Location</th>
-                        <th>Platform</th>
-                        <th>Gross</th>
-                        <th>Commission</th>
-                        <th>Net</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($recent_orders as $order): ?>
-                    <tr>
-                        <td><?= format_date($order['order_date']) ?></td>
-                        <td><code><?= h(substr($order['order_id'], 0, 12)) ?></code></td>
-                        <td><?= h($order['location_name']) ?></td>
-                        <td><span class="platform-badge <?= h($order['platform']) ?>"><?= h(ucfirst($order['platform'])) ?></span></td>
-                        <td><?= format_money($order['gross_value']) ?></td>
-                        <td class="text-danger"><?= format_money($order['commission']) ?></td>
-                        <td><?= format_money($order['net_payout']) ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-            <?php else: ?>
-            <p class="empty">No orders yet</p>
-            <?php endif; ?>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         const chartData = <?= json_encode($daily_data) ?>;
+        let chart = null;
 
-        if (chartData.length > 0) {
-            new Chart(document.getElementById('revenueChart'), {
+        function toggleCustomRange() {
+            const form = document.getElementById('customRangeForm');
+            form.style.display = form.style.display === 'none' ? 'flex' : 'none';
+        }
+
+        function updateChart() {
+            const kpi = document.getElementById('chartKpi').value;
+            const labels = chartData.map(d => d.order_date);
+
+            let data, label, color, isCurrency = true, isPercent = false;
+
+            switch(kpi) {
+                case 'gross':
+                    data = chartData.map(d => d.gross);
+                    label = 'Gross Revenue';
+                    color = '#3b82f6';
+                    break;
+                case 'net':
+                    data = chartData.map(d => d.net);
+                    label = 'Net Payout';
+                    color = '#10b981';
+                    break;
+                case 'orders':
+                    data = chartData.map(d => d.orders);
+                    label = 'Orders';
+                    color = '#8b5cf6';
+                    isCurrency = false;
+                    break;
+                case 'aov':
+                    data = chartData.map(d => d.aov);
+                    label = 'Avg Order Value';
+                    color = '#f59e0b';
+                    break;
+                case 'margin':
+                    data = chartData.map(d => d.margin);
+                    label = 'Margin %';
+                    color = '#ef4444';
+                    isCurrency = false;
+                    isPercent = true;
+                    break;
+            }
+
+            if (chart) {
+                chart.destroy();
+            }
+
+            chart = new Chart(document.getElementById('revenueChart'), {
                 type: 'line',
                 data: {
-                    labels: chartData.map(d => d.order_date),
+                    labels: labels,
                     datasets: [{
-                        label: 'Gross',
-                        data: chartData.map(d => d.gross),
-                        borderColor: '#3b82f6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        fill: true,
-                        tension: 0.3
-                    }, {
-                        label: 'Net',
-                        data: chartData.map(d => d.net),
-                        borderColor: '#10b981',
-                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        label: label,
+                        data: data,
+                        borderColor: color,
+                        backgroundColor: color + '20',
                         fill: true,
                         tension: 0.3
                     }]
@@ -355,20 +388,27 @@ $recent_orders = get_recent_orders($id, 25);
                         mode: 'index'
                     },
                     plugins: {
-                        legend: { position: 'bottom' }
+                        legend: { display: false }
                     },
                     scales: {
                         y: {
                             beginAtZero: true,
                             ticks: {
                                 callback: function(value) {
-                                    return value.toLocaleString('it-IT') + ' €';
+                                    if (isPercent) return value.toFixed(1) + '%';
+                                    if (isCurrency) return value.toLocaleString('it-IT') + ' €';
+                                    return value;
                                 }
                             }
                         }
                     }
                 }
             });
+        }
+
+        // Initialize chart
+        if (chartData.length > 0) {
+            updateChart();
         }
     </script>
 </body>
