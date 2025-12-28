@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/functions.php';
 
 // Ensure admin exists
 ensure_admin_exists();
@@ -51,12 +52,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="form-group">
                 <label for="email">Email</label>
                 <input type="email" id="email" name="email" required autofocus
+                    placeholder="admin@example.com"
                     value="<?= h($_POST['email'] ?? '') ?>">
             </div>
 
             <div class="form-group">
                 <label for="password">Password</label>
-                <input type="password" id="password" name="password" required>
+                <input type="password" id="password" name="password" required
+                    placeholder="Enter your password">
             </div>
 
             <button type="submit" class="btn btn-primary btn-block">Login</button>
