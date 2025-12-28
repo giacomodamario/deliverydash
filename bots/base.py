@@ -204,6 +204,8 @@ class BaseBot(ABC):
         cookie_selectors = [
             # OneTrust (used by Deliveroo and many others)
             '#onetrust-accept-btn-handler',
+            'button:has-text("Accept All Cookies")',
+            'button:has-text("Accept all cookies")',
             '#onetrust-pc-btn-handler',
             'button[id*="onetrust"]',
 
