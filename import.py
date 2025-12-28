@@ -117,7 +117,7 @@ def import_csv(filepath: Path, cursor) -> dict:
                 order.refund_amount,
                 order.promo_restaurant_funded,
                 order.promo_platform_funded,
-                order.tip_amount,
+                0,  # tips
                 order.cash_payment_adjustment,
                 1 if order.is_cash_order else 0
             ))
