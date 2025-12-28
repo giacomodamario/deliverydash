@@ -1,6 +1,8 @@
 """Base bot class with common functionality for all platform bots."""
 
+import json
 import logging
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional, List
@@ -44,14 +46,16 @@ class BaseBot(ABC):
 
         self.logger = logging.getLogger(f"bot.{self.PLATFORM_NAME}")
         self.downloads_dir = settings.downloads_dir / self.PLATFORM_NAME
+        self.session_file = settings.sessions_dir / f"{self.PLATFORM_NAME}_session.json"
 
         self._playwright = None
         self._browser: Optional[Browser] = None
         self._context: Optional[BrowserContext] = None
         self._page: Optional[Page] = None
 
-        # Ensure download directory exists
+        # Ensure directories exist
         self.downloads_dir.mkdir(parents=True, exist_ok=True)
+        settings.sessions_dir.mkdir(parents=True, exist_ok=True)
 
     @property
     def page(self) -> Page:
@@ -60,7 +64,7 @@ class BaseBot(ABC):
             raise RuntimeError("Browser not started. Call start() first.")
         return self._page
 
-    def start(self):
+    def start(self, use_session: bool = True):
         """Start the browser and create a new page."""
         self.logger.info(f"Starting {self.PLATFORM_NAME} bot...")
 
@@ -69,9 +73,20 @@ class BaseBot(ABC):
             headless=self.headless,
             slow_mo=self.slow_mo,
         )
+
+        # Try to load existing session
+        storage_state = None
+        if use_session and self.session_file.exists():
+            try:
+                self.logger.info("Loading saved session...")
+                storage_state = str(self.session_file)
+            except Exception as e:
+                self.logger.warning(f"Could not load session: {e}")
+
         self._context = self._browser.new_context(
             accept_downloads=True,
             viewport={"width": 1920, "height": 1080},
+            storage_state=storage_state,
         )
         self._page = self._context.new_page()
 
@@ -80,9 +95,21 @@ class BaseBot(ABC):
 
         self.logger.info("Browser started successfully")
 
-    def stop(self):
+    def save_session(self):
+        """Save current session (cookies, localStorage) for reuse."""
+        if self._context:
+            try:
+                self._context.storage_state(path=str(self.session_file))
+                self.logger.info(f"Session saved to {self.session_file}")
+            except Exception as e:
+                self.logger.warning(f"Could not save session: {e}")
+
+    def stop(self, save_session: bool = True):
         """Close the browser and cleanup."""
         self.logger.info(f"Stopping {self.PLATFORM_NAME} bot...")
+
+        if save_session:
+            self.save_session()
 
         if self._context:
             self._context.close()
@@ -126,18 +153,19 @@ class BaseBot(ABC):
         self.page.wait_for_selector(selector, timeout=timeout)
         self.page.fill(selector, value)
 
-    def download_file(self, click_selector: str, filename: str = None) -> Path:
+    def download_file(self, click_selector: str, filename: str = None, timeout: int = 60000) -> Path:
         """
         Click a download button and wait for the download to complete.
 
         Args:
             click_selector: Selector for the element that triggers download
             filename: Optional custom filename for the downloaded file
+            timeout: Download timeout in milliseconds
 
         Returns:
             Path to the downloaded file
         """
-        with self.page.expect_download() as download_info:
+        with self.page.expect_download(timeout=timeout) as download_info:
             self.page.click(click_selector)
 
         download = download_info.value
@@ -153,6 +181,14 @@ class BaseBot(ABC):
         self.logger.info(f"Downloaded: {save_path}")
 
         return save_path
+
+    def wait_for_stable_page(self, timeout: int = 5000):
+        """Wait for page to stabilize (no network activity)."""
+        try:
+            self.page.wait_for_load_state("networkidle", timeout=timeout)
+        except Exception:
+            pass  # Timeout is OK, page might have persistent connections
+        time.sleep(0.5)  # Extra small wait for JS rendering
 
     @abstractmethod
     def login(self) -> bool:

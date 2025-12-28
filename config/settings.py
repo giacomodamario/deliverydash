@@ -36,8 +36,9 @@ class Settings(BaseSettings):
 
     # Paths
     base_dir: Path = Path(__file__).parent.parent
-    downloads_dir: Path = base_dir / "downloads"
+    downloads_dir: Path = base_dir / "data" / "downloads"
     database_path: Path = base_dir / "data" / "invoices.db"
+    sessions_dir: Path = base_dir / "data" / "sessions"
 
     # Browser settings
     headless: bool = False  # Set to True for production
@@ -57,6 +58,7 @@ class Settings(BaseSettings):
         """Create necessary directories if they don't exist."""
         self.downloads_dir.mkdir(parents=True, exist_ok=True)
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        self.sessions_dir.mkdir(parents=True, exist_ok=True)
 
         # Create platform-specific download directories
         for platform in ["deliveroo", "glovo", "justeat"]:
