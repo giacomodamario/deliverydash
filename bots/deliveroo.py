@@ -74,17 +74,30 @@ class DeliverooBot(BaseBot):
             ('button:has-text("OK")', "OK button"),
             ('button:has-text("Dismiss")', "Dismiss button"),
 
-            # NPS survey popup
+            # NPS survey popup (bottom of page)
             ('button:has-text("Close")', "Close button"),
             ('button:has-text("Chiudi")', "Chiudi button"),
             ('[aria-label="Close survey"]', "Survey close"),
             ('[data-testid="nps-close"]', "NPS close"),
+            ('[data-testid="survey-close"]', "Survey close"),
+            ('[class*="nps"] button[aria-label="Close"]', "NPS close button"),
+            ('[class*="survey"] button[aria-label="Close"]', "Survey close button"),
+            ('[class*="feedback"] button[aria-label="Close"]', "Feedback close"),
+            ('button:has-text("No thanks")', "No thanks button"),
+            ('button:has-text("No grazie")', "No grazie button"),
+            ('button:has-text("Maybe later")', "Maybe later button"),
+            ('button:has-text("Not now")', "Not now button"),
+            ('button:has-text("Skip")', "Skip button"),
 
             # Generic modal/dialog close buttons
             ('[role="dialog"] button[aria-label="Close"]', "Dialog close"),
             ('.modal button:has-text("×")', "Modal X button"),
             ('button:has-text("×")', "X button"),
             ('button:has-text("✕")', "Close symbol"),
+
+            # Bottom survey/feedback widget
+            ('iframe[title*="survey"]', "Survey iframe - will try to close parent"),
+            ('[class*="widget"] button:has-text("Close")', "Widget close"),
         ]
 
         dismissed_count = 0
@@ -264,22 +277,36 @@ class DeliverooBot(BaseBot):
         # TODO: Implement location switching if account has multiple locations
         return [{"id": "default", "name": "Default Location"}]
 
-    def _get_invoice_rows(self) -> list:
-        """Get all invoice rows from the current page."""
+    def _get_all_csv_links(self) -> list:
+        """Get all CSV download links from the current page."""
         try:
-            # Wait for table to be visible
-            self.page.wait_for_selector(self.SELECTORS["invoice_table"], timeout=10000)
-            time.sleep(1)  # Wait for table to fully render
+            # Wait for page content to load
+            time.sleep(2)
 
-            rows = self.page.locator(self.SELECTORS["invoice_row"]).all()
-            self.logger.info(f"Found {len(rows)} invoice rows")
-            return rows
-        except Exception as e:
-            self.logger.error(f"Error getting invoice rows: {e}")
+            # Try multiple selectors to find CSV links
+            csv_selectors = [
+                'a:has-text("CSV")',
+                'button:has-text("CSV")',
+                '[href*=".csv"]',
+                '[data-testid*="csv"]',
+                'a[download*=".csv"]',
+            ]
+
+            for selector in csv_selectors:
+                links = self.page.locator(selector).all()
+                if links:
+                    self.logger.info(f"Found {len(links)} CSV links using selector: {selector}")
+                    return links
+
+            self.logger.warning("No CSV links found on page")
             return []
 
-    def _extract_invoice_info_from_row(self, row) -> dict:
-        """Extract invoice information from a table row."""
+        except Exception as e:
+            self.logger.error(f"Error getting CSV links: {e}")
+            return []
+
+    def _extract_invoice_info_from_link(self, csv_link) -> dict:
+        """Extract invoice information from the context around a CSV link."""
         info = {
             "invoice_number": None,
             "period": None,
@@ -288,68 +315,78 @@ class DeliverooBot(BaseBot):
         }
 
         try:
-            text = row.text_content()
+            # Try to get the parent row/container and extract text
+            # Go up to find a container with invoice info
+            parent = csv_link.locator("xpath=ancestor::tr | ancestor::div[contains(@class, 'row')] | ancestor::*[contains(@class, 'invoice')]").first
 
-            # Extract invoice number (Fattura n° XXXXX)
-            invoice_match = re.search(r'(?:Fattura\s*n[°º]?\s*|Invoice\s*#?\s*)(\d+)', text, re.IGNORECASE)
-            if invoice_match:
-                info["invoice_number"] = invoice_match.group(1)
+            if parent.count() > 0:
+                text = parent.text_content()
+            else:
+                # If no specific parent found, get broader context
+                text = csv_link.evaluate("el => el.closest('tr, [role=\"row\"], [class*=\"row\"]')?.textContent || ''")
 
-            # Extract date patterns
-            date_matches = re.findall(r'\d{1,2}/\d{1,2}/\d{4}', text)
-            if date_matches:
-                info["period"] = date_matches[0]
-                if len(date_matches) > 1:
-                    info["due_date"] = date_matches[1]
+            if text:
+                # Extract invoice number (various patterns: res-it-XXX, Fattura n° XXX, Invoice #XXX)
+                invoice_match = re.search(r'(res-[a-z]{2}-\d+|(?:Fattura\s*n[°º]?\s*|Invoice\s*#?\s*)(\d+))', text, re.IGNORECASE)
+                if invoice_match:
+                    info["invoice_number"] = invoice_match.group(1) if invoice_match.group(1).startswith("res-") else invoice_match.group(2)
 
-            # Extract amount
-            amount_match = re.search(r'[€£$]\s*-?[\d.,]+', text)
-            if amount_match:
-                info["total"] = amount_match.group(0)
+                # Extract date patterns
+                date_matches = re.findall(r'\d{1,2}/\d{1,2}/\d{4}|\d{1,2}\s+\w+\s+\d{4}', text)
+                if date_matches:
+                    info["period"] = date_matches[0]
+                    if len(date_matches) > 1:
+                        info["due_date"] = date_matches[1]
+
+                # Extract amount
+                amount_match = re.search(r'[€£$]\s*-?[\d.,]+', text)
+                if amount_match:
+                    info["total"] = amount_match.group(0)
 
         except Exception as e:
             self.logger.debug(f"Error extracting invoice info: {e}")
 
         return info
 
-    def _download_csv_from_row(self, row, invoice_info: dict) -> Optional[Path]:
-        """Download the CSV file from the Sintesi column of a row."""
+    def _download_csv(self, csv_link, index: int) -> Optional[Path]:
+        """Download a CSV file from a link."""
         try:
-            # Find CSV link in this row
-            csv_link = row.locator(self.SELECTORS["csv_link"]).first
+            # Extract invoice info for naming
+            invoice_info = self._extract_invoice_info_from_link(csv_link)
+            invoice_num = invoice_info.get("invoice_number") or f"invoice_{index+1}"
+            period = invoice_info.get("period") or datetime.now().strftime("%Y%m%d")
+            period_clean = re.sub(r'[/\s]+', '-', period)
 
-            if csv_link.is_visible(timeout=1000):
-                invoice_num = invoice_info.get("invoice_number") or "unknown"
-                period = invoice_info.get("period") or datetime.now().strftime("%Y%m%d")
-                period_clean = period.replace("/", "-")
+            self.logger.info(f"Downloading CSV #{index+1} (invoice: {invoice_num})...")
 
-                self.logger.info(f"Downloading CSV for invoice {invoice_num}...")
+            # Click and wait for download
+            with self.page.expect_download(timeout=30000) as download_info:
+                csv_link.click()
 
-                # Click and wait for download
-                with self.page.expect_download(timeout=30000) as download_info:
-                    csv_link.click()
+            download = download_info.value
 
-                download = download_info.value
+            # Generate filename
+            filename = f"deliveroo_{period_clean}_{invoice_num}.csv"
+            # Clean filename of invalid characters
+            filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+            save_path = self.downloads_dir / filename
 
-                # Generate filename
-                filename = f"deliveroo_{period_clean}_{invoice_num}.csv"
+            # Handle duplicate filenames
+            counter = 1
+            while save_path.exists():
+                filename = f"deliveroo_{period_clean}_{invoice_num}_{counter}.csv"
+                filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
                 save_path = self.downloads_dir / filename
+                counter += 1
 
-                # Handle duplicate filenames
-                counter = 1
-                while save_path.exists():
-                    filename = f"deliveroo_{period_clean}_{invoice_num}_{counter}.csv"
-                    save_path = self.downloads_dir / filename
-                    counter += 1
-
-                download.save_as(str(save_path))
-                self.logger.info(f"Downloaded: {save_path.name}")
-                return save_path
+            download.save_as(str(save_path))
+            self.logger.info(f"Downloaded: {save_path.name}")
+            return save_path
 
         except PlaywrightTimeout:
-            self.logger.warning(f"Download timeout for invoice {invoice_info.get('invoice_number')}")
+            self.logger.warning(f"Download timeout for CSV #{index+1}")
         except Exception as e:
-            self.logger.error(f"Error downloading CSV: {e}")
+            self.logger.error(f"Error downloading CSV #{index+1}: {e}")
 
         return None
 
@@ -386,12 +423,15 @@ class DeliverooBot(BaseBot):
         start_date: datetime = None,
         end_date: datetime = None,
     ) -> List[DownloadedInvoice]:
-        """Download all invoices (CSV from Sintesi column)."""
+        """Download all invoices (CSV from Statement column)."""
         downloaded_invoices = []
 
         # Navigate to invoices section
         if not self._navigate_to_invoices():
             return []
+
+        # Dismiss any popups (including NPS survey)
+        self._dismiss_popups()
 
         # Process all pages
         page_num = 1
@@ -401,15 +441,24 @@ class DeliverooBot(BaseBot):
             self.logger.info(f"Processing invoice page {page_num}...")
             self.screenshot(f"04_invoice_page_{page_num}")
 
-            rows = self._get_invoice_rows()
+            # Dismiss popups before processing
+            self._dismiss_popups()
 
-            if not rows:
-                self.logger.warning("No invoice rows found on this page")
+            # Find all CSV links on this page
+            csv_links = self._get_all_csv_links()
+
+            if not csv_links:
+                self.logger.warning("No CSV links found on this page")
+                # Take a debug screenshot
+                self.screenshot("05_no_csv_links_found")
                 break
 
-            for row in rows:
-                invoice_info = self._extract_invoice_info_from_row(row)
-                file_path = self._download_csv_from_row(row, invoice_info)
+            self.logger.info(f"Found {len(csv_links)} CSV links to download")
+
+            for index, csv_link in enumerate(csv_links):
+                # Extract invoice info for this link
+                invoice_info = self._extract_invoice_info_from_link(csv_link)
+                file_path = self._download_csv(csv_link, index)
 
                 if file_path:
                     total_downloaded += 1
@@ -418,8 +467,14 @@ class DeliverooBot(BaseBot):
                     invoice_date = datetime.now()
                     if invoice_info.get("period"):
                         try:
-                            invoice_date = datetime.strptime(invoice_info["period"], "%d/%m/%Y")
-                        except ValueError:
+                            # Try various date formats
+                            for fmt in ["%d/%m/%Y", "%d %B %Y", "%d-%m-%Y"]:
+                                try:
+                                    invoice_date = datetime.strptime(invoice_info["period"], fmt)
+                                    break
+                                except ValueError:
+                                    continue
+                        except Exception:
                             pass
 
                     downloaded_invoices.append(DownloadedInvoice(
@@ -432,10 +487,15 @@ class DeliverooBot(BaseBot):
                         file_type="csv",
                     ))
 
+                # Small delay between downloads
+                time.sleep(0.5)
+
             # Check for more pages
             if self._has_next_page():
                 self._go_to_next_page()
                 page_num += 1
+                # Dismiss popups on new page
+                self._dismiss_popups()
             else:
                 self.logger.info("No more pages")
                 break
