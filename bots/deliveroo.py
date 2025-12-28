@@ -1,10 +1,11 @@
-"""Deliveroo Restaurant Hub bot for downloading invoices."""
+"""Deliveroo Partner Hub bot for downloading invoices."""
 
 import re
 import time
 from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
+from urllib.parse import urlparse, parse_qs, urlencode
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
@@ -12,11 +13,11 @@ from .base import BaseBot, DownloadedInvoice
 
 
 class DeliverooBot(BaseBot):
-    """Bot for downloading invoices from Deliveroo Restaurant Hub."""
+    """Bot for downloading invoices from Deliveroo Partner Hub."""
 
     PLATFORM_NAME = "deliveroo"
-    LOGIN_URL = "https://restaurant-hub.deliveroo.net/"
-    INVOICES_URL = "https://restaurant-hub.deliveroo.net/invoices"
+    LOGIN_URL = "https://partner-hub.deliveroo.com/"
+    INVOICES_URL = "https://partner-hub.deliveroo.com/reports/invoices"
 
     # Selectors
     SELECTORS = {
@@ -39,6 +40,21 @@ class DeliverooBot(BaseBot):
         "next_page": 'button:has-text("Next"), a:has-text("Next"), [aria-label="Next page"], button:has-text("Avanti")',
         "prev_page": 'button:has-text("Previous"), a:has-text("Previous"), button:has-text("Indietro")',
     }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.org_id = None  # Will be extracted from URL after login
+
+    def _extract_org_id(self):
+        """Extract orgId from current URL."""
+        try:
+            parsed = urlparse(self.page.url)
+            params = parse_qs(parsed.query)
+            if 'orgId' in params:
+                self.org_id = params['orgId'][0]
+                self.logger.info(f"Extracted orgId: {self.org_id}")
+        except Exception as e:
+            self.logger.warning(f"Could not extract orgId: {e}")
 
     def _dismiss_popups(self):
         """Dismiss Deliveroo-specific popups (announcements, surveys, modals)."""
@@ -96,8 +112,31 @@ class DeliverooBot(BaseBot):
         except Exception:
             pass
 
+    def _is_logged_in(self) -> bool:
+        """Check if we're already logged in based on URL or page content."""
+        current_url = self.page.url
+
+        # Check URL patterns that indicate logged-in state
+        logged_in_patterns = ["/home", "/analytics", "/invoices", "/reports", "/dashboard"]
+        if any(pattern in current_url for pattern in logged_in_patterns):
+            return True
+
+        # Check if we're on partner-hub domain (not login page)
+        if "partner-hub.deliveroo.com" in current_url and "/login" not in current_url:
+            return True
+
+        # Check if sidebar with Invoices link is visible
+        try:
+            invoices_link = self.page.locator(self.SELECTORS["invoices_sidebar"]).first
+            if invoices_link.is_visible(timeout=2000):
+                return True
+        except Exception:
+            pass
+
+        return False
+
     def login(self) -> bool:
-        """Log into Deliveroo Restaurant Hub."""
+        """Log into Deliveroo Partner Hub."""
         self.logger.info(f"Navigating to {self.LOGIN_URL}")
         self.page.goto(self.LOGIN_URL)
 
@@ -111,21 +150,11 @@ class DeliverooBot(BaseBot):
         self._dismiss_popups()
 
         # Check if already logged in (from saved session)
-        current_url = self.page.url
-        if "/home" in current_url or "/analytics" in current_url or "/invoices" in current_url:
-            self.logger.info(f"Already logged in (URL: {current_url}), skipping login")
+        if self._is_logged_in():
+            self.logger.info(f"Already logged in (URL: {self.page.url}), skipping login")
+            self._extract_org_id()
             self.screenshot("01_already_logged_in")
             return True
-
-        # Also check if sidebar with Invoices link is visible
-        try:
-            invoices_link = self.page.locator(self.SELECTORS["invoices_sidebar"]).first
-            if invoices_link.is_visible(timeout=2000):
-                self.logger.info("Already logged in (found Invoices link), skipping login")
-                self.screenshot("01_already_logged_in")
-                return True
-        except Exception:
-            pass
 
         # Take a screenshot
         self.screenshot("01_login_page")
@@ -160,10 +189,13 @@ class DeliverooBot(BaseBot):
             current_url = self.page.url
             self.logger.info(f"Current URL after login: {current_url}")
 
+            # Extract orgId from URL
+            self._extract_org_id()
+
             self.screenshot("02_after_login")
 
             # Check if login was successful
-            if "login" not in current_url.lower() or "analytics" in current_url.lower() or "hub" in current_url.lower():
+            if self._is_logged_in():
                 self.logger.info("Login successful!")
                 return True
 
@@ -200,21 +232,27 @@ class DeliverooBot(BaseBot):
                 invoices_link.click()
                 self._wait_for_page()
                 self._dismiss_popups()
+                self._extract_org_id()  # Extract orgId from URL after navigation
                 self.screenshot("03_invoices_page")
                 return True
         except Exception as e:
             self.logger.info(f"Sidebar link not found: {e}")
 
-        # Fall back to direct URL
-        self.logger.info(f"Navigating directly to {self.INVOICES_URL}")
-        self.page.goto(self.INVOICES_URL)
+        # Fall back to direct URL (with orgId if available)
+        invoices_url = self.INVOICES_URL
+        if self.org_id:
+            invoices_url = f"{self.INVOICES_URL}?orgId={self.org_id}"
+
+        self.logger.info(f"Navigating directly to {invoices_url}")
+        self.page.goto(invoices_url)
         self._wait_for_page()
         self._dismiss_popups()
         self.screenshot("03_invoices_page")
 
         # Check if we're on the invoices page
-        if "invoice" in self.page.url.lower():
+        if "invoice" in self.page.url.lower() or "reports" in self.page.url.lower():
             self.logger.info("Successfully navigated to invoices page")
+            self._extract_org_id()  # Extract orgId if not already set
             return True
 
         self.logger.error("Failed to navigate to invoices page")
