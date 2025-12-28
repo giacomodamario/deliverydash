@@ -349,7 +349,7 @@ class DeliverooBot(BaseBot):
         return info
 
     def _download_csv(self, csv_link, index: int) -> Optional[Path]:
-        """Download a CSV file using simple click with expect_download."""
+        """Download a CSV file - handles new tab/popup if link opens one."""
         try:
             self.logger.info(f"Downloading CSV #{index+1}...")
 
@@ -357,11 +357,33 @@ class DeliverooBot(BaseBot):
             csv_link.scroll_into_view_if_needed()
             time.sleep(0.5)
 
-            # Simple click with expect_download
-            with self.page.expect_download(timeout=30000) as download_info:
-                csv_link.click()
+            # Check if link opens in new tab
+            target = csv_link.get_attribute("target")
+            href = csv_link.get_attribute("href")
+            self.logger.debug(f"Link target={target}, href={href[:80] if href else 'None'}...")
 
-            download = download_info.value
+            if target == "_blank" or target == "blank":
+                # Link opens in new tab - wait for popup and download from there
+                self.logger.info("Link opens in new tab, handling popup...")
+                with self.page.context.expect_page() as new_page_info:
+                    csv_link.click()
+
+                new_page = new_page_info.value
+                new_page.wait_for_load_state("load")
+
+                # Wait for download from the new page
+                with new_page.expect_download(timeout=30000) as download_info:
+                    pass  # Download should already be triggered
+
+                download = download_info.value
+                new_page.close()
+
+            else:
+                # Regular link - expect download directly
+                with self.page.expect_download(timeout=30000) as download_info:
+                    csv_link.click()
+
+                download = download_info.value
 
             # Use suggested filename or generate one
             filename = download.suggested_filename or f"invoice_{index+1}.csv"
