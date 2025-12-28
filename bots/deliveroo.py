@@ -373,7 +373,7 @@ class DeliverooBot(BaseBot):
             self.logger.info(f"Downloading CSV #{index+1} (invoice: {invoice_num}) from {href[:80]}...")
 
             # Get cookies from browser session
-            cookies = self.context.cookies()
+            cookies = self.page.context.cookies()
             cookie_dict = {c['name']: c['value'] for c in cookies}
 
             # Download file using requests with session cookies
