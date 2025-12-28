@@ -116,13 +116,13 @@ class DeliverooBot(BaseBot):
         """Check if we're already logged in based on URL or page content."""
         current_url = self.page.url
 
+        # First check: if URL contains "/login" → definitely NOT logged in
+        if "/login" in current_url:
+            return False
+
         # Check URL patterns that indicate logged-in state
         logged_in_patterns = ["/home", "/analytics", "/invoices", "/reports", "/dashboard"]
         if any(pattern in current_url for pattern in logged_in_patterns):
-            return True
-
-        # Check if we're on partner-hub domain (not login page)
-        if "partner-hub.deliveroo.com" in current_url and "/login" not in current_url:
             return True
 
         # Check if sidebar with Invoices link is visible
