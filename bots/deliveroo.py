@@ -39,6 +39,50 @@ class DeliverooBot(BaseBot):
         "pagination": '.pagination, nav[aria-label="pagination"]',
     }
 
+    def _dismiss_popups(self):
+        """Dismiss Deliveroo-specific popups (announcements, surveys, etc.)."""
+
+        # Handle "We've renamed Hub" announcement popup
+        renamed_popup_selectors = [
+            'button:has-text("Log in")',  # Teal button in the popup
+            '[data-testid="announcement-login"]',
+            '.announcement-modal button:has-text("Log in")',
+        ]
+
+        for selector in renamed_popup_selectors:
+            try:
+                button = self.page.locator(selector).first
+                if button.is_visible(timeout=1000):
+                    # Make sure this is the announcement popup, not the main login
+                    # Check if there's modal/overlay context
+                    self.logger.info(f"Found announcement popup, clicking: {selector}")
+                    button.click()
+                    time.sleep(0.5)
+                    break
+            except Exception:
+                continue
+
+        # Handle NPS survey popup ("How likely are you to recommend Deliveroo")
+        survey_close_selectors = [
+            'button:has-text("Close")',
+            '[aria-label="Close"]',
+            '[aria-label="Close survey"]',
+            '.nps-survey button:has-text("Close")',
+            '[data-testid="nps-close"]',
+            '.survey-modal button:has-text("Close")',
+        ]
+
+        for selector in survey_close_selectors:
+            try:
+                button = self.page.locator(selector).first
+                if button.is_visible(timeout=500):
+                    self.logger.info(f"Found survey popup, closing: {selector}")
+                    button.click()
+                    time.sleep(0.3)
+                    break
+            except Exception:
+                continue
+
     def login(self) -> bool:
         """Log into Deliveroo Partner Hub."""
         self.logger.info(f"Navigating to {self.LOGIN_URL}")
@@ -49,6 +93,9 @@ class DeliverooBot(BaseBot):
 
         # Dismiss cookie consent popup if present
         self.dismiss_cookie_consent()
+
+        # Dismiss any Deliveroo-specific popups (announcements, surveys)
+        self._dismiss_popups()
 
         # Take a screenshot to see what we're dealing with
         self.screenshot("login_page")
