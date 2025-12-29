@@ -362,16 +362,18 @@ function get_growth_comparisons(int $brand_id): array {
     $yoy['period'] = format_date_short($this_year_start) . ' - ' . format_date_short($end_date);
     $yoy['vs_period'] = format_date_short($yoy_start_last_year) . ' - ' . format_date_short($yoy_end_last_year);
 
-    // Like for Like (L4W vs previous 4 weeks)
+    // Like for Like - Last 4 weeks vs same 4 weeks LAST YEAR
     $l4l_start = (clone $last_date)->modify('-27 days')->format('Y-m-d');
-    $prev_l4l_start = (clone $last_date)->modify('-55 days')->format('Y-m-d');
-    $prev_l4l_end = (clone $last_date)->modify('-28 days')->format('Y-m-d');
+    $l4l_end = $end_date;
+    // Same period last year
+    $l4l_start_ly = (clone $last_date)->modify('-1 year')->modify('-27 days')->format('Y-m-d');
+    $l4l_end_ly = (clone $last_date)->modify('-1 year')->format('Y-m-d');
 
-    $l4l_current = get_hero_metrics($brand_id, $l4l_start, $end_date);
-    $l4l_prev = get_hero_metrics($brand_id, $prev_l4l_start, $prev_l4l_end);
+    $l4l_current = get_hero_metrics($brand_id, $l4l_start, $l4l_end);
+    $l4l_prev = get_hero_metrics($brand_id, $l4l_start_ly, $l4l_end_ly);
     $l4l = format_trend($l4l_current['gross'], $l4l_prev['gross']);
-    $l4l['period'] = format_date_short($l4l_start) . ' - ' . format_date_short($end_date);
-    $l4l['vs_period'] = format_date_short($prev_l4l_start) . ' - ' . format_date_short($prev_l4l_end);
+    $l4l['period'] = format_date_short($l4l_start) . ' - ' . format_date_short($l4l_end);
+    $l4l['vs_period'] = format_date_short($l4l_start_ly) . ' - ' . format_date_short($l4l_end_ly) . ' (LY)';
 
     return [
         'wow' => $wow,

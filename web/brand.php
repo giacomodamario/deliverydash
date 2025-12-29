@@ -33,6 +33,7 @@ $breakdown = get_order_breakdown($id, $date_range['start'], $date_range['end']);
 $growth = get_growth_comparisons($id);
 $patterns = get_day_patterns($id, $date_range['start'], $date_range['end']);
 $daily_data = get_daily_data($id, $date_range['start'], $date_range['end']);
+$daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['prev_end']);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -92,7 +93,7 @@ $daily_data = get_daily_data($id, $date_range['start'], $date_range['end']);
                 <div class="stat-header">
                     <span class="stat-value"><?= format_money($hero['gross']['value']) ?></span>
                 </div>
-                <div class="stat-label">Gross Revenue <span class="info-icon" title="<?= h($tooltips['gross']) ?>">ⓘ</span></div>
+                <div class="stat-label">Gross Revenue <span class="info-tooltip" data-tooltip="<?= h($tooltips['gross']) ?>">ⓘ</span></div>
                 <div class="stat-trend <?= $hero['gross']['trend']['direction'] ?>">
                     <?= $hero['gross']['trend']['label'] ?>
                     <span class="trend-period"><?= h($hero['gross']['trend']['comparison']) ?></span>
@@ -102,7 +103,7 @@ $daily_data = get_daily_data($id, $date_range['start'], $date_range['end']);
                 <div class="stat-header">
                     <span class="stat-value"><?= format_money($hero['net']['value']) ?></span>
                 </div>
-                <div class="stat-label">Net Payout <span class="info-icon" title="<?= h($tooltips['net']) ?>">ⓘ</span></div>
+                <div class="stat-label">Net Payout <span class="info-tooltip" data-tooltip="<?= h($tooltips['net']) ?>">ⓘ</span></div>
                 <div class="stat-trend <?= $hero['net']['trend']['direction'] ?>">
                     <?= $hero['net']['trend']['label'] ?>
                     <span class="trend-period"><?= h($hero['net']['trend']['comparison']) ?></span>
@@ -112,7 +113,7 @@ $daily_data = get_daily_data($id, $date_range['start'], $date_range['end']);
                 <div class="stat-header">
                     <span class="stat-value"><?= number_format($hero['orders']['value']) ?></span>
                 </div>
-                <div class="stat-label">Orders <span class="info-icon" title="<?= h($tooltips['orders']) ?>">ⓘ</span></div>
+                <div class="stat-label">Orders <span class="info-tooltip" data-tooltip="<?= h($tooltips['orders']) ?>">ⓘ</span></div>
                 <div class="stat-trend <?= $hero['orders']['trend']['direction'] ?>">
                     <?= $hero['orders']['trend']['label'] ?>
                     <span class="trend-period"><?= h($hero['orders']['trend']['comparison']) ?></span>
@@ -122,7 +123,7 @@ $daily_data = get_daily_data($id, $date_range['start'], $date_range['end']);
                 <div class="stat-header">
                     <span class="stat-value"><?= format_money($hero['aov']['value']) ?></span>
                 </div>
-                <div class="stat-label">Avg Order Value <span class="info-icon" title="<?= h($tooltips['aov']) ?>">ⓘ</span></div>
+                <div class="stat-label">Avg Order Value <span class="info-tooltip" data-tooltip="<?= h($tooltips['aov']) ?>">ⓘ</span></div>
                 <div class="stat-trend <?= $hero['aov']['trend']['direction'] ?>">
                     <?= $hero['aov']['trend']['label'] ?>
                     <span class="trend-period"><?= h($hero['aov']['trend']['comparison']) ?></span>
@@ -132,7 +133,7 @@ $daily_data = get_daily_data($id, $date_range['start'], $date_range['end']);
                 <div class="stat-header">
                     <span class="stat-value"><?= format_percent($hero['margin']['value']) ?></span>
                 </div>
-                <div class="stat-label">Net Margin <span class="info-icon" title="<?= h($tooltips['margin']) ?>">ⓘ</span></div>
+                <div class="stat-label">Net Margin <span class="info-tooltip" data-tooltip="<?= h($tooltips['margin']) ?>">ⓘ</span></div>
                 <div class="stat-trend <?= $hero['margin']['trend']['direction'] ?>">
                     <?= $hero['margin']['trend']['label'] ?>
                     <span class="trend-period"><?= h($hero['margin']['trend']['comparison']) ?></span>
@@ -145,15 +146,15 @@ $daily_data = get_daily_data($id, $date_range['start'], $date_range['end']);
             <div class="card">
                 <h2>Platform Costs</h2>
                 <div class="metric-row">
-                    <span class="metric-label">Commission <span class="info-icon" title="<?= h($tooltips['commission']) ?>">ⓘ</span></span>
+                    <span class="metric-label">Commission <span class="info-tooltip" data-tooltip="<?= h($tooltips['commission']) ?>">ⓘ</span></span>
                     <span class="metric-value danger"><?= format_money($costs['commission']) ?></span>
                 </div>
                 <div class="metric-row">
-                    <span class="metric-label">Avg Rate <span class="info-icon" title="<?= h($tooltips['avg_rate']) ?>">ⓘ</span></span>
+                    <span class="metric-label">Avg Rate <span class="info-tooltip" data-tooltip="<?= h($tooltips['avg_rate']) ?>">ⓘ</span></span>
                     <span class="metric-value"><?= format_percent($costs['avg_rate']) ?></span>
                 </div>
                 <div class="metric-row">
-                    <span class="metric-label">Refunds <span class="info-icon" title="<?= h($tooltips['refunds']) ?>">ⓘ</span></span>
+                    <span class="metric-label">Refunds <span class="info-tooltip" data-tooltip="<?= h($tooltips['refunds']) ?>">ⓘ</span></span>
                     <span class="metric-value danger"><?= format_money($costs['refunds']) ?> <small>(<?= format_percent($costs['refund_pct']) ?> of net)</small></span>
                 </div>
                 <div class="metric-row total">
@@ -165,15 +166,15 @@ $daily_data = get_daily_data($id, $date_range['start'], $date_range['end']);
             <div class="card">
                 <h2>Promos & Marketing</h2>
                 <div class="metric-row">
-                    <span class="metric-label">Restaurant Funded <span class="info-icon" title="<?= h($tooltips['restaurant_promos']) ?>">ⓘ</span></span>
+                    <span class="metric-label">Restaurant Funded <span class="info-tooltip" data-tooltip="<?= h($tooltips['restaurant_promos']) ?>">ⓘ</span></span>
                     <span class="metric-value warning"><?= format_money($promos['restaurant_promos']) ?> <small>(<?= format_percent($promos['restaurant_pct']) ?>)</small></span>
                 </div>
                 <div class="metric-row">
-                    <span class="metric-label">Platform Funded <span class="info-icon" title="<?= h($tooltips['platform_promos']) ?>">ⓘ</span></span>
+                    <span class="metric-label">Platform Funded <span class="info-tooltip" data-tooltip="<?= h($tooltips['platform_promos']) ?>">ⓘ</span></span>
                     <span class="metric-value success"><?= format_money($promos['platform_promos']) ?> <small>(<?= format_percent($promos['platform_pct']) ?>)</small></span>
                 </div>
                 <div class="metric-row">
-                    <span class="metric-label">Tips <span class="info-icon" title="<?= h($tooltips['tips']) ?>">ⓘ</span></span>
+                    <span class="metric-label">Tips <span class="info-tooltip" data-tooltip="<?= h($tooltips['tips']) ?>">ⓘ</span></span>
                     <span class="metric-value success"><?= format_money($promos['tips']) ?></span>
                 </div>
                 <div class="metric-row total">
@@ -299,10 +300,10 @@ $daily_data = get_daily_data($id, $date_range['start'], $date_range['end']);
             </div>
         </div>
 
-        <!-- ROW 5: Revenue Chart -->
+        <!-- ROW 5: Performance Trend Chart -->
         <div class="card">
             <div class="chart-header">
-                <h2>Daily Performance</h2>
+                <h2>Performance Trend</h2>
                 <div class="chart-controls">
                     <select id="chartKpi" onchange="updateChart()">
                         <option value="gross">Gross Revenue</option>
@@ -311,6 +312,10 @@ $daily_data = get_daily_data($id, $date_range['start'], $date_range['end']);
                         <option value="aov">Avg Order Value</option>
                         <option value="margin">Margin %</option>
                     </select>
+                    <label class="chart-checkbox">
+                        <input type="checkbox" id="showComparison" onchange="updateChart()" checked>
+                        Show previous period
+                    </label>
                 </div>
             </div>
             <canvas id="revenueChart" height="100"></canvas>
@@ -320,6 +325,8 @@ $daily_data = get_daily_data($id, $date_range['start'], $date_range['end']);
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         const chartData = <?= json_encode($daily_data) ?>;
+        const chartDataPrev = <?= json_encode($daily_data_prev) ?>;
+        const prevLabel = '<?= h($date_range['prev_label'] ?? 'Previous period') ?>';
         let chart = null;
 
         function toggleCustomRange() {
@@ -329,34 +336,40 @@ $daily_data = get_daily_data($id, $date_range['start'], $date_range['end']);
 
         function updateChart() {
             const kpi = document.getElementById('chartKpi').value;
-            const labels = chartData.map(d => d.order_date);
+            const showComparison = document.getElementById('showComparison').checked;
+            const labels = chartData.map((d, i) => 'Day ' + (i + 1));
 
-            let data, label, color, isCurrency = true, isPercent = false;
+            let data, dataPrev, label, color, isCurrency = true, isPercent = false;
 
             switch(kpi) {
                 case 'gross':
                     data = chartData.map(d => d.gross);
+                    dataPrev = chartDataPrev.map(d => d.gross);
                     label = 'Gross Revenue';
                     color = '#3b82f6';
                     break;
                 case 'net':
                     data = chartData.map(d => d.net);
+                    dataPrev = chartDataPrev.map(d => d.net);
                     label = 'Net Payout';
                     color = '#10b981';
                     break;
                 case 'orders':
                     data = chartData.map(d => d.orders);
+                    dataPrev = chartDataPrev.map(d => d.orders);
                     label = 'Orders';
                     color = '#8b5cf6';
                     isCurrency = false;
                     break;
                 case 'aov':
                     data = chartData.map(d => d.aov);
+                    dataPrev = chartDataPrev.map(d => d.aov);
                     label = 'Avg Order Value';
                     color = '#f59e0b';
                     break;
                 case 'margin':
                     data = chartData.map(d => d.margin);
+                    dataPrev = chartDataPrev.map(d => d.margin);
                     label = 'Margin %';
                     color = '#ef4444';
                     isCurrency = false;
@@ -368,18 +381,34 @@ $daily_data = get_daily_data($id, $date_range['start'], $date_range['end']);
                 chart.destroy();
             }
 
+            const datasets = [{
+                label: label + ' (Current)',
+                data: data,
+                borderColor: color,
+                backgroundColor: color + '20',
+                fill: true,
+                tension: 0.3,
+                borderWidth: 2
+            }];
+
+            if (showComparison && dataPrev.length > 0) {
+                datasets.push({
+                    label: label + ' (Previous)',
+                    data: dataPrev,
+                    borderColor: '#9ca3af',
+                    backgroundColor: 'transparent',
+                    fill: false,
+                    tension: 0.3,
+                    borderWidth: 2,
+                    borderDash: [5, 5]
+                });
+            }
+
             chart = new Chart(document.getElementById('revenueChart'), {
                 type: 'line',
                 data: {
                     labels: labels,
-                    datasets: [{
-                        label: label,
-                        data: data,
-                        borderColor: color,
-                        backgroundColor: color + '20',
-                        fill: true,
-                        tension: 0.3
-                    }]
+                    datasets: datasets
                 },
                 options: {
                     responsive: true,
@@ -388,7 +417,20 @@ $daily_data = get_daily_data($id, $date_range['start'], $date_range['end']);
                         mode: 'index'
                     },
                     plugins: {
-                        legend: { display: false }
+                        legend: {
+                            display: showComparison && dataPrev.length > 0,
+                            position: 'bottom'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: function(context) {
+                                    const idx = context[0].dataIndex;
+                                    const currentDate = chartData[idx]?.order_date || '';
+                                    const prevDate = chartDataPrev[idx]?.order_date || '';
+                                    return currentDate + (prevDate ? ' vs ' + prevDate : '');
+                                }
+                            }
+                        }
                     },
                     scales: {
                         y: {

@@ -632,7 +632,8 @@ code {
 }
 
 /* Info Icon Tooltips */
-.info-icon {
+.info-tooltip {
+    position: relative;
     display: inline-block;
     cursor: help;
     font-size: 0.75rem;
@@ -640,8 +641,50 @@ code {
     margin-left: 0.25rem;
 }
 
-.info-icon:hover {
+.info-tooltip:hover {
     color: var(--primary);
+}
+
+.info-tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    background: #1f2937;
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.4;
+    white-space: normal;
+    width: 220px;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s, visibility 0.2s;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.info-tooltip::before {
+    content: '';
+    position: absolute;
+    bottom: 115%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: #1f2937;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s, visibility 0.2s;
+}
+
+.info-tooltip:hover::after,
+.info-tooltip:hover::before {
+    opacity: 1;
+    visibility: visible;
 }
 
 /* Custom Date Range Form */
@@ -783,12 +826,32 @@ code {
     margin-bottom: 0;
 }
 
+.chart-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
 .chart-controls select {
     padding: 0.5rem 1rem;
     border: 1px solid var(--gray-300);
     border-radius: 6px;
     font-size: 0.9rem;
     background: white;
+    cursor: pointer;
+}
+
+.chart-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--gray-600);
+    cursor: pointer;
+}
+
+.chart-checkbox input {
+    width: auto;
     cursor: pointer;
 }
 
