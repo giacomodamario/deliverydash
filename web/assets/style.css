@@ -149,6 +149,7 @@ h2 {
     font-size: 1.8rem;
     font-weight: 700;
     color: var(--gray-900);
+    white-space: nowrap;
 }
 
 .stat-label {
@@ -1097,4 +1098,228 @@ code {
         flex-direction: column;
         align-items: flex-start;
     }
+}
+
+/* Hourly Heatmap */
+.heatmap-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.heatmap-stat {
+    text-align: center;
+}
+
+.stat-value-small {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--gray-900);
+    display: block;
+}
+
+.heatmap-container {
+    position: relative;
+}
+
+.heatmap-toggle {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.heatmap-toggle .btn.active {
+    background: var(--primary);
+    color: white;
+}
+
+.heatmap-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 0.75rem;
+}
+
+.heatmap-header {
+    display: flex;
+    gap: 2px;
+}
+
+.heatmap-corner {
+    width: 35px;
+    min-width: 35px;
+}
+
+.heatmap-day {
+    flex: 1;
+    text-align: center;
+    font-weight: 600;
+    color: var(--gray-600);
+    padding: 0.25rem 0;
+}
+
+.heatmap-row {
+    display: flex;
+    gap: 2px;
+}
+
+.heatmap-hour {
+    width: 35px;
+    min-width: 35px;
+    text-align: right;
+    padding-right: 0.5rem;
+    color: var(--gray-500);
+    font-size: 0.7rem;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.heatmap-cell {
+    flex: 1;
+    aspect-ratio: 1.5;
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: transform 0.1s;
+    color: white;
+    font-weight: 600;
+    font-size: 0.7rem;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+.heatmap-cell:hover {
+    transform: scale(1.1);
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.cell-value {
+    opacity: 0.9;
+}
+
+.heatmap-legend {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    font-size: 0.75rem;
+    color: var(--gray-500);
+}
+
+.legend-gradient {
+    width: 100px;
+    height: 12px;
+    background: linear-gradient(to right, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 1));
+    border-radius: 3px;
+}
+
+@media (max-width: 768px) {
+    .heatmap-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .heatmap-cell {
+        min-height: 24px;
+        font-size: 0.6rem;
+    }
+
+    .heatmap-day {
+        font-size: 0.65rem;
+    }
+}
+
+/* Refund Details Section */
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.section-header h2 {
+    margin: 0;
+}
+
+.badge {
+    background: var(--gray-200);
+    color: var(--gray-600);
+    padding: 0.25rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+/* Filter Pills */
+.filter-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.pill {
+    display: inline-block;
+    padding: 0.35rem 0.75rem;
+    background: var(--gray-100);
+    color: var(--gray-600);
+    border-radius: 999px;
+    font-size: 0.8rem;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+
+.pill:hover {
+    background: var(--gray-200);
+}
+
+.pill.active {
+    background: var(--primary);
+    color: white;
+}
+
+/* Pagination */
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--gray-200);
+}
+
+.page-info {
+    color: var(--gray-500);
+    font-size: 0.85rem;
+}
+
+/* Refund Row Highlighting */
+.refund-row.restaurant {
+    background: #fef2f2;
+}
+
+.refund-row.platform {
+    background: #eff6ff;
+}
+
+/* Code styling for order IDs */
+code {
+    background: var(--gray-100);
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.85rem;
+    font-family: ui-monospace, monospace;
+}
+
+td.danger {
+    color: var(--danger);
+    font-weight: 600;
 }

@@ -23,6 +23,16 @@ function format_date_short(string $date): string {
     return date('M j', strtotime($date));
 }
 
+function format_date_range(string $start, string $end): string {
+    $start_dt = strtotime($start);
+    $end_dt = strtotime($end);
+    // "Nov 24 - Dec 21, 2025" format
+    if (date('Y', $start_dt) === date('Y', $end_dt)) {
+        return date('M j', $start_dt) . ' - ' . date('M j, Y', $end_dt);
+    }
+    return date('M j, Y', $start_dt) . ' - ' . date('M j, Y', $end_dt);
+}
+
 function h(string $str): string {
     return htmlspecialchars($str, ENT_QUOTES, 'UTF-8');
 }
@@ -364,7 +374,12 @@ function get_platform_costs(int $brand_id, string $start, string $end, float $ne
         ? ($result['promo_platform'] / $calculated_net_revenue) * 100
         : 0;
 
-    $result['total'] = $result['commission'] + $result['discount_commission'] + $result['refunds'] + $result['ad_fee'];
+    // Total Platform Costs = Commission + Commission on Funded + Refunds (excludes Ads, which is in Marketing)
+    $result['total'] = $result['commission'] + $result['discount_commission'] + $result['refunds'];
+
+    $result['total_pct'] = $calculated_net_revenue > 0
+        ? ($result['total'] / $calculated_net_revenue) * 100
+        : 0;
 
     return $result;
 }
@@ -481,6 +496,76 @@ function get_refund_breakdown(int $brand_id, string $start, string $end): array 
     ];
 }
 
+// === REFUND DETAILS (Individual Orders) ===
+
+function get_refund_details(int $brand_id, string $start, string $end, int $page = 1, int $per_page = 10, ?string $reason_filter = null): array {
+    $offset = ($page - 1) * $per_page;
+    $params = [$brand_id, $start, $end];
+
+    $where_clause = "l.brand_id = ? AND o.order_date BETWEEN ? AND ? AND o.refund > 0";
+
+    if ($reason_filter && $reason_filter !== 'all') {
+        $where_clause .= " AND o.refund_reason = ?";
+        $params[] = $reason_filter;
+    }
+
+    // Get total count
+    $count_sql = "
+        SELECT COUNT(*) as total
+        FROM orders o
+        JOIN locations l ON o.location_id = l.id
+        WHERE $where_clause
+    ";
+    $count_result = query_one($count_sql, $params);
+    $total = $count_result['total'] ?? 0;
+
+    // Get paginated results
+    $sql = "
+        SELECT
+            o.order_id,
+            o.order_date,
+            o.order_time,
+            o.gross_value,
+            o.refund,
+            o.refund_reason,
+            o.refund_fault,
+            l.name as location_name
+        FROM orders o
+        JOIN locations l ON o.location_id = l.id
+        WHERE $where_clause
+        ORDER BY o.order_date DESC, o.order_time DESC
+        LIMIT ? OFFSET ?
+    ";
+    $params[] = $per_page;
+    $params[] = $offset;
+
+    $orders = query($sql, $params);
+
+    // Normalize fault values
+    foreach ($orders as &$order) {
+        $order['refund_fault'] = normalize_fault($order['refund_fault'] ?? '');
+    }
+
+    // Get unique reasons for filter pills
+    $reasons_sql = "
+        SELECT DISTINCT o.refund_reason as reason
+        FROM orders o
+        JOIN locations l ON o.location_id = l.id
+        WHERE l.brand_id = ? AND o.order_date BETWEEN ? AND ? AND o.refund > 0 AND o.refund_reason IS NOT NULL AND o.refund_reason != ''
+        ORDER BY o.refund_reason
+    ";
+    $reasons = query($reasons_sql, [$brand_id, $start, $end]);
+
+    return [
+        'orders' => $orders,
+        'total' => $total,
+        'page' => $page,
+        'per_page' => $per_page,
+        'total_pages' => ceil($total / $per_page),
+        'reasons' => array_column($reasons, 'reason')
+    ];
+}
+
 // === ORDER BREAKDOWN ===
 
 function get_order_breakdown(int $brand_id, string $start, string $end): array {
@@ -570,12 +655,14 @@ function get_growth_comparisons(int $brand_id): array {
     $yoy['period'] = format_date_short($this_year_start) . ' - ' . format_date_short($end_date);
     $yoy['vs_period'] = format_date_short($yoy_start_last_year) . ' - ' . format_date_short($yoy_end_last_year);
 
-    // Like for Like - Last 4 weeks vs same 4 weeks LAST YEAR (SAME STORES ONLY)
+    // Like for Like - Last 4 weeks vs 364 days ago (same weekdays, same stores)
     $l4l_start = (clone $last_date)->modify('-27 days')->format('Y-m-d');
     $l4l_end = $end_date;
-    // Same period last year
-    $l4l_start_ly = (clone $last_date)->modify('-1 year')->modify('-27 days')->format('Y-m-d');
-    $l4l_end_ly = (clone $last_date)->modify('-1 year')->format('Y-m-d');
+
+    // Use 364 days (52 weeks) to match weekdays, not exactly 1 year
+    // This ensures Mon-Sun matches Mon-Sun in comparison period
+    $l4l_start_ly = (clone $last_date)->modify('-364 days')->modify('-27 days')->format('Y-m-d');
+    $l4l_end_ly = (clone $last_date)->modify('-364 days')->format('Y-m-d');
 
     // Get locations that had orders in BOTH periods
     $same_store_ids = get_same_store_locations($brand_id, $l4l_start, $l4l_end, $l4l_start_ly, $l4l_end_ly);
@@ -651,6 +738,113 @@ function get_day_patterns(int $brand_id, string $start, string $end): array {
         'days' => $reordered,
         'best' => $best,
         'worst' => $worst
+    ];
+}
+
+// === HOURLY HEATMAP DATA ===
+
+function get_hourly_heatmap(int $brand_id, string $start, string $end): array {
+    $sql = "
+        SELECT
+            CAST(strftime('%H', o.order_time) AS INTEGER) as hour,
+            CAST(strftime('%w', o.order_date) AS INTEGER) as day_of_week,
+            COUNT(*) as orders,
+            SUM(o.gross_value) as revenue
+        FROM orders o
+        JOIN locations l ON o.location_id = l.id
+        WHERE l.brand_id = ?
+        AND o.order_date BETWEEN ? AND ?
+        AND o.order_time IS NOT NULL
+        AND o.order_time != ''
+        GROUP BY hour, day_of_week
+        ORDER BY hour, day_of_week
+    ";
+    $rows = query($sql, [$brand_id, $start, $end]);
+
+    // Build matrix: hours (0-23) x days (0-6, Sunday=0)
+    $matrix = [];
+    $max_orders = 0;
+    $max_revenue = 0;
+    $totals_by_hour = [];
+    $totals_by_day = [];
+
+    // Initialize matrix
+    for ($h = 0; $h < 24; $h++) {
+        $matrix[$h] = [];
+        $totals_by_hour[$h] = ['orders' => 0, 'revenue' => 0];
+        for ($d = 0; $d < 7; $d++) {
+            $matrix[$h][$d] = ['orders' => 0, 'revenue' => 0];
+        }
+    }
+    for ($d = 0; $d < 7; $d++) {
+        $totals_by_day[$d] = ['orders' => 0, 'revenue' => 0];
+    }
+
+    // Populate matrix
+    foreach ($rows as $row) {
+        $h = (int)$row['hour'];
+        $d = (int)$row['day_of_week'];
+        $orders = (int)$row['orders'];
+        $revenue = (float)$row['revenue'];
+
+        if ($h >= 0 && $h < 24 && $d >= 0 && $d < 7) {
+            $matrix[$h][$d] = ['orders' => $orders, 'revenue' => $revenue];
+            $max_orders = max($max_orders, $orders);
+            $max_revenue = max($max_revenue, $revenue);
+            $totals_by_hour[$h]['orders'] += $orders;
+            $totals_by_hour[$h]['revenue'] += $revenue;
+            $totals_by_day[$d]['orders'] += $orders;
+            $totals_by_day[$d]['revenue'] += $revenue;
+        }
+    }
+
+    // Find peak/slowest
+    $peak_hour = 0;
+    $peak_hour_orders = 0;
+    $slowest_hour = 0;
+    $slowest_hour_orders = PHP_INT_MAX;
+    $busiest_day = 0;
+    $busiest_day_orders = 0;
+    $slowest_day = 0;
+    $slowest_day_orders = PHP_INT_MAX;
+
+    foreach ($totals_by_hour as $h => $data) {
+        if ($data['orders'] > $peak_hour_orders) {
+            $peak_hour = $h;
+            $peak_hour_orders = $data['orders'];
+        }
+        if ($data['orders'] > 0 && $data['orders'] < $slowest_hour_orders) {
+            $slowest_hour = $h;
+            $slowest_hour_orders = $data['orders'];
+        }
+    }
+
+    foreach ($totals_by_day as $d => $data) {
+        if ($data['orders'] > $busiest_day_orders) {
+            $busiest_day = $d;
+            $busiest_day_orders = $data['orders'];
+        }
+        if ($data['orders'] > 0 && $data['orders'] < $slowest_day_orders) {
+            $slowest_day = $d;
+            $slowest_day_orders = $data['orders'];
+        }
+    }
+
+    $day_names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    return [
+        'matrix' => $matrix,
+        'max_orders' => $max_orders,
+        'max_revenue' => $max_revenue,
+        'peak_hour' => sprintf('%02d:00', $peak_hour),
+        'peak_hour_orders' => $peak_hour_orders,
+        'slowest_hour' => sprintf('%02d:00', $slowest_hour),
+        'slowest_hour_orders' => $slowest_hour_orders,
+        'busiest_day' => $day_names[$busiest_day],
+        'busiest_day_orders' => $busiest_day_orders,
+        'slowest_day' => $day_names[$slowest_day],
+        'slowest_day_orders' => $slowest_day_orders,
+        'day_names' => $day_names
     ];
 }
 

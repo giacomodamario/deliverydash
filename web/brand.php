@@ -37,9 +37,13 @@ $net_revenue = $hero['net_revenue_raw'] ?? 0;
 $costs = get_platform_costs($id, $date_range['start'], $date_range['end'], $net_revenue);
 $promos = get_promo_stats($id, $date_range['start'], $date_range['end'], $net_revenue);
 $refund_breakdown = get_refund_breakdown($id, $date_range['start'], $date_range['end']);
+$refund_page = isset($_GET['refund_page']) ? max(1, (int)$_GET['refund_page']) : 1;
+$refund_filter = $_GET['refund_filter'] ?? null;
+$refund_details = get_refund_details($id, $date_range['start'], $date_range['end'], $refund_page, 10, $refund_filter);
 $breakdown = get_order_breakdown($id, $date_range['start'], $date_range['end']);
 $growth = get_growth_comparisons($id);
 $patterns = get_day_patterns($id, $date_range['start'], $date_range['end']);
+$heatmap = get_hourly_heatmap($id, $date_range['start'], $date_range['end']);
 $daily_data = get_daily_data($id, $date_range['start'], $date_range['end']);
 $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['prev_end']);
 ?>
@@ -131,9 +135,9 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
         </div>
 
         <div class="date-info">
-            <span class="date-label"><?= h($date_range['label']) ?>: <?= format_date($date_range['start']) ?> — <?= format_date($date_range['end']) ?></span>
+            <span class="date-label"><?= format_date_range($date_range['start'], $date_range['end']) ?></span>
             <?php if (!empty($date_range['is_partial'])): ?>
-            <span class="partial-warning">Partial period: data until <?= format_date($last_order_date) ?></span>
+            <span class="partial-warning">Partial period: data until <?= format_date_short($last_order_date) ?></span>
             <?php endif; ?>
             <?php if ($location_id > 0): ?>
             <span class="location-filter-active">Filtered by location</span>
@@ -214,7 +218,7 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
                     <span class="metric-pct"><?= format_percent($costs['commission_pct']) ?> of net rev</span>
                 </div>
                 <div class="metric-row">
-                    <span class="metric-label">Commission on Funded Amount <span class="info-tooltip" data-tooltip="<?= h($tooltips['discount_commission']) ?>">ⓘ</span></span>
+                    <span class="metric-label">Commission on Funded <span class="info-tooltip" data-tooltip="<?= h($tooltips['discount_commission']) ?>">ⓘ</span></span>
                     <span class="metric-value danger"><?= format_money($costs['discount_commission']) ?></span>
                     <span class="metric-pct"><?= format_percent($costs['discount_commission_pct']) ?> of net rev</span>
                 </div>
@@ -223,19 +227,10 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
                     <span class="metric-value danger"><?= format_money($costs['refunds']) ?></span>
                     <span class="metric-pct"><?= format_percent($costs['refund_pct']) ?> of net rev</span>
                 </div>
-                <div class="metric-row">
-                    <span class="metric-label">Ads <span class="info-tooltip" data-tooltip="<?= h($tooltips['ad_fee']) ?>">ⓘ</span></span>
-                    <span class="metric-value danger"><?= format_money($costs['ad_fee']) ?></span>
-                    <span class="metric-pct"><?= format_percent($costs['ad_fee_pct']) ?> of net rev</span>
-                </div>
-                <div class="metric-row">
-                    <span class="metric-label">Platform Funded <span class="info-tooltip" data-tooltip="<?= h($tooltips['platform_promos']) ?>">ⓘ</span></span>
-                    <span class="metric-value success"><?= format_money($costs['promo_platform']) ?></span>
-                    <span class="metric-pct"><?= format_percent($costs['platform_promo_pct']) ?> of net rev</span>
-                </div>
                 <div class="metric-row total">
                     <span class="metric-label">Total Costs</span>
                     <span class="metric-value danger"><?= format_money($costs['total']) ?></span>
+                    <span class="metric-pct"><?= format_percent($costs['total_pct']) ?> of net rev</span>
                 </div>
             </div>
 
@@ -340,6 +335,69 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
         </div>
         <?php endif; ?>
 
+        <!-- Refund Details -->
+        <?php if ($refund_details['total'] > 0): ?>
+        <div class="card">
+            <div class="section-header">
+                <h2>Refund Details</h2>
+                <span class="badge"><?= $refund_details['total'] ?> orders</span>
+            </div>
+
+            <!-- Filter Pills -->
+            <?php if (!empty($refund_details['reasons'])): ?>
+            <div class="filter-pills">
+                <a href="?id=<?= $id ?>&range=<?= $range ?>&from=<?= $custom_start ?>&to=<?= $custom_end ?>"
+                   class="pill <?= !$refund_filter ? 'active' : '' ?>">All</a>
+                <?php foreach ($refund_details['reasons'] as $reason): ?>
+                <a href="?id=<?= $id ?>&range=<?= $range ?>&from=<?= $custom_start ?>&to=<?= $custom_end ?>&refund_filter=<?= urlencode($reason) ?>"
+                   class="pill <?= $refund_filter === $reason ? 'active' : '' ?>"><?= h($reason) ?></a>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+
+            <!-- Refund Orders Table -->
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Order ID</th>
+                        <th>Date</th>
+                        <th>Time</th>
+                        <th class="text-right">Value</th>
+                        <th class="text-right">Refund</th>
+                        <th>Reason</th>
+                        <th>Fault</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($refund_details['orders'] as $order): ?>
+                    <tr class="refund-row <?= strtolower($order['refund_fault']) ?>">
+                        <td><code><?= h($order['order_id']) ?></code></td>
+                        <td><?= format_date($order['order_date']) ?></td>
+                        <td><?= h($order['order_time'] ?? '-') ?></td>
+                        <td class="text-right"><?= format_money($order['gross_value']) ?></td>
+                        <td class="text-right danger"><?= format_money($order['refund']) ?></td>
+                        <td><?= h($order['refund_reason'] ?? '-') ?></td>
+                        <td><span class="fault-badge <?= strtolower($order['refund_fault']) ?>"><?= h($order['refund_fault']) ?></span></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+
+            <!-- Pagination -->
+            <?php if ($refund_details['total_pages'] > 1): ?>
+            <div class="pagination">
+                <?php if ($refund_page > 1): ?>
+                <a href="?id=<?= $id ?>&range=<?= $range ?>&from=<?= $custom_start ?>&to=<?= $custom_end ?>&refund_filter=<?= urlencode($refund_filter ?? '') ?>&refund_page=<?= $refund_page - 1 ?>" class="btn btn-small">← Prev</a>
+                <?php endif; ?>
+                <span class="page-info">Page <?= $refund_page ?> of <?= $refund_details['total_pages'] ?></span>
+                <?php if ($refund_page < $refund_details['total_pages']): ?>
+                <a href="?id=<?= $id ?>&range=<?= $range ?>&from=<?= $custom_start ?>&to=<?= $custom_end ?>&refund_filter=<?= urlencode($refund_filter ?? '') ?>&refund_page=<?= $refund_page + 1 ?>" class="btn btn-small">Next →</a>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+
         <!-- ROW 3: Growth Comparisons -->
         <div class="card">
             <h2>Growth Comparisons</h2>
@@ -413,48 +471,86 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
             </div>
 
             <div class="card">
-                <h2>By Platform</h2>
-                <?php if (!empty($breakdown['platforms'])): ?>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Platform</th>
-                            <th>Orders</th>
-                            <th>Gross</th>
-                            <th>Rate</th>
-                            <th>Net</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($breakdown['platforms'] as $p): ?>
-                        <tr>
-                            <td><span class="platform-badge <?= h($p['platform']) ?>"><?= h(ucfirst($p['platform'])) ?></span></td>
-                            <td><?= number_format($p['orders']) ?></td>
-                            <td><?= format_money($p['gross']) ?></td>
-                            <td><?= format_percent($p['avg_rate']) ?></td>
-                            <td><?= format_money($p['net']) ?></td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-
-                <!-- Payment Methods -->
-                <div class="payment-summary">
-                    <?php
-                    $total_orders = ($breakdown['cash']['card_orders'] ?? 0) + ($breakdown['cash']['cash_orders'] ?? 0);
-                    $cash_pct = $total_orders > 0 ? (($breakdown['cash']['cash_orders'] ?? 0) / $total_orders) * 100 : 0;
-                    ?>
-                    <div class="payment-item">
-                        <span>Card: <?= number_format($breakdown['cash']['card_orders'] ?? 0) ?> orders</span>
-                        <span><?= format_money($breakdown['cash']['card_value'] ?? 0) ?></span>
+                <h2>Hourly Performance</h2>
+                <?php if ($heatmap['max_orders'] > 0): ?>
+                <!-- Summary Stats -->
+                <div class="heatmap-stats">
+                    <div class="heatmap-stat">
+                        <span class="stat-label">Peak Hour</span>
+                        <span class="stat-value-small"><?= $heatmap['peak_hour'] ?></span>
                     </div>
-                    <div class="payment-item">
-                        <span>Cash: <?= number_format($breakdown['cash']['cash_orders'] ?? 0) ?> orders (<?= format_percent($cash_pct) ?>)</span>
-                        <span><?= format_money($breakdown['cash']['cash_value'] ?? 0) ?></span>
+                    <div class="heatmap-stat">
+                        <span class="stat-label">Busiest Day</span>
+                        <span class="stat-value-small"><?= $heatmap['busiest_day'] ?></span>
+                    </div>
+                    <div class="heatmap-stat">
+                        <span class="stat-label">Slowest Hour</span>
+                        <span class="stat-value-small"><?= $heatmap['slowest_hour'] ?></span>
+                    </div>
+                    <div class="heatmap-stat">
+                        <span class="stat-label">Slowest Day</span>
+                        <span class="stat-value-small"><?= $heatmap['slowest_day'] ?></span>
+                    </div>
+                </div>
+
+                <!-- Heatmap Grid -->
+                <div class="heatmap-container">
+                    <div class="heatmap-toggle">
+                        <button class="btn btn-small active" onclick="toggleHeatmap('orders')">Orders</button>
+                        <button class="btn btn-small" onclick="toggleHeatmap('revenue')">Revenue</button>
+                    </div>
+                    <div class="heatmap-grid" id="heatmapGrid">
+                        <div class="heatmap-header">
+                            <div class="heatmap-corner"></div>
+                            <?php
+                            // Reorder days starting from Monday
+                            $day_order = [1, 2, 3, 4, 5, 6, 0];
+                            foreach ($day_order as $d):
+                            ?>
+                            <div class="heatmap-day"><?= $heatmap['day_names'][$d] ?></div>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php
+                        // Only show hours with data (typically 10-23)
+                        $active_hours = [];
+                        foreach ($heatmap['matrix'] as $h => $days) {
+                            $has_data = false;
+                            foreach ($days as $d => $data) {
+                                if ($data['orders'] > 0) $has_data = true;
+                            }
+                            if ($has_data) $active_hours[] = $h;
+                        }
+                        if (empty($active_hours)) $active_hours = range(10, 22);
+                        $min_hour = min($active_hours);
+                        $max_hour = max($active_hours);
+
+                        for ($h = $min_hour; $h <= $max_hour; $h++):
+                        ?>
+                        <div class="heatmap-row">
+                            <div class="heatmap-hour"><?= sprintf('%02d', $h) ?></div>
+                            <?php foreach ($day_order as $d):
+                                $cell = $heatmap['matrix'][$h][$d];
+                                $intensity = $heatmap['max_orders'] > 0 ? $cell['orders'] / $heatmap['max_orders'] : 0;
+                            ?>
+                            <div class="heatmap-cell"
+                                 data-orders="<?= $cell['orders'] ?>"
+                                 data-revenue="<?= number_format($cell['revenue'], 2) ?>"
+                                 style="background: rgba(59, 130, 246, <?= $intensity ?>);"
+                                 title="<?= $cell['orders'] ?> orders, <?= format_money($cell['revenue']) ?>">
+                                <span class="cell-value"><?= $cell['orders'] > 0 ? $cell['orders'] : '' ?></span>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php endfor; ?>
+                    </div>
+                    <div class="heatmap-legend">
+                        <span>Low</span>
+                        <div class="legend-gradient"></div>
+                        <span>High</span>
                     </div>
                 </div>
                 <?php else: ?>
-                <p class="empty">No data for this period</p>
+                <p class="empty">No hourly data for this period</p>
                 <?php endif; ?>
             </div>
         </div>
@@ -514,6 +610,41 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
                 to.setFullYear(to.getFullYear() - 1);
                 compareFromInput.value = from.toISOString().split('T')[0];
                 compareToInput.value = to.toISOString().split('T')[0];
+            }
+        }
+
+        const heatmapMaxRevenue = <?= $heatmap['max_revenue'] ?? 0 ?>;
+
+        function toggleHeatmap(mode) {
+            const cells = document.querySelectorAll('.heatmap-cell');
+            const buttons = document.querySelectorAll('.heatmap-toggle .btn');
+
+            buttons.forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+
+            cells.forEach(cell => {
+                const orders = parseInt(cell.dataset.orders) || 0;
+                const revenue = parseFloat(cell.dataset.revenue) || 0;
+                const valueSpan = cell.querySelector('.cell-value');
+
+                if (mode === 'orders') {
+                    const maxOrders = <?= $heatmap['max_orders'] ?? 1 ?>;
+                    const intensity = maxOrders > 0 ? orders / maxOrders : 0;
+                    cell.style.background = `rgba(59, 130, 246, ${intensity})`;
+                    valueSpan.textContent = orders > 0 ? orders : '';
+                } else {
+                    const intensity = heatmapMaxRevenue > 0 ? revenue / heatmapMaxRevenue : 0;
+                    cell.style.background = `rgba(16, 185, 129, ${intensity})`;
+                    valueSpan.textContent = revenue > 0 ? Math.round(revenue) + '€' : '';
+                }
+            });
+
+            // Update legend gradient color
+            const legend = document.querySelector('.legend-gradient');
+            if (mode === 'orders') {
+                legend.style.background = 'linear-gradient(to right, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 1))';
+            } else {
+                legend.style.background = 'linear-gradient(to right, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 1))';
             }
         }
 
