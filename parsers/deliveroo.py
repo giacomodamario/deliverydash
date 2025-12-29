@@ -209,21 +209,33 @@ def parse_deliveroo_invoice(filepath: str, verbose: bool = False) -> ParsedInvoi
                     if 'Pagamento in contanti' in notes or 'Cash' in notes:
                         order.is_cash_order = True
 
-                    # Check for platform promo in order notes
-                    # "Sconto offerta Marketer" = Platform-funded discount
-                    if 'Sconto offerta Marketer' in notes or 'Marketer' in notes:
-                        match = re.search(r'Sconto offerta Marketer[:\s]*([\d,\.]+)', notes)
-                        if match:
-                            # Use float() for notes-extracted values (not European format)
-                            order.promo_platform_funded = float(match.group(1).replace(',', '.'))
+                    # PROMO ATTRIBUTION LOGIC:
+                    # Platform-funded: ONLY when notes explicitly say "Platform funded"
+                    # Restaurant-funded: EVERYTHING else (Marketer, Sconto, discounts)
+                    # Note: "Marketer" is a paid advertising tool that RESTAURANTS pay for
 
-                    # Check for restaurant discount in notes
-                    # "Sconto del ristorante" or "Restaurant discount"
-                    if 'Sconto del ristorante' in notes or 'Restaurant discount' in notes.lower():
-                        match = re.search(r'Sconto del ristorante[:\s]*([\d,\.]+)', notes, re.IGNORECASE)
+                    if 'platform funded' in notes.lower():
+                        # Only explicit platform-funded discounts
+                        match = re.search(r'[Ss]conto[:\s]*([\d,\.]+)', notes)
                         if match:
-                            # Use float() for notes-extracted values (not European format)
-                            order.promo_restaurant_funded = float(match.group(1).replace(',', '.'))
+                            order.promo_platform_funded = float(match.group(1).replace(',', '.'))
+                    else:
+                        # Everything else is restaurant-funded
+                        # Check for "Sconto offerta Marketer" (restaurant pays for Marketer tool)
+                        if 'Sconto offerta Marketer' in notes:
+                            match = re.search(r'Sconto offerta Marketer[:\s]*([\d,\.]+)', notes)
+                            if match:
+                                order.promo_restaurant_funded += float(match.group(1).replace(',', '.'))
+                        # Check for "Sconto del ristorante"
+                        elif 'Sconto del ristorante' in notes:
+                            match = re.search(r'Sconto del ristorante[:\s]*([\d,\.]+)', notes, re.IGNORECASE)
+                            if match:
+                                order.promo_restaurant_funded += float(match.group(1).replace(',', '.'))
+                        # Check for generic "Sconto" or discount
+                        elif 'sconto' in notes.lower():
+                            match = re.search(r'[Ss]conto[:\s]*([\d,\.]+)', notes)
+                            if match:
+                                order.promo_restaurant_funded += float(match.group(1).replace(',', '.'))
 
                     orders_by_id[order_id] = order
                     if order.restaurant_name:
@@ -272,18 +284,16 @@ def parse_deliveroo_invoice(filepath: str, verbose: bool = False) -> ParsedInvoi
                         orders_by_id[order_id].cash_payment_adjustment = abs(adjustment_value)
                         orders_by_id[order_id].is_cash_order = True
 
-                # Restaurant-funded voucher/promo/discount
-                # "Sconto" without "Marketer" is typically restaurant-funded
-                elif 'sconto' in activity.lower() and 'marketer' not in activity.lower():
+                # Promo/discount/voucher in activity
+                # ALL discounts are restaurant-funded UNLESS notes say "Platform funded"
+                elif 'sconto' in activity.lower() or 'voucher' in activity.lower() or 'promo' in activity.lower():
                     promo_amount = abs(adjustment_value)
                     if is_valid_order_id(order_id) and order_id in orders_by_id:
-                        orders_by_id[order_id].promo_restaurant_funded += promo_amount
-
-                # Generic voucher - usually platform
-                elif 'voucher' in activity.lower():
-                    promo_amount = abs(adjustment_value)
-                    if is_valid_order_id(order_id) and order_id in orders_by_id:
-                        orders_by_id[order_id].promo_platform_funded += promo_amount
+                        if 'platform funded' in notes.lower():
+                            orders_by_id[order_id].promo_platform_funded += promo_amount
+                        else:
+                            # Everything else is restaurant-funded (including Marketer)
+                            orders_by_id[order_id].promo_restaurant_funded += promo_amount
 
             except Exception as e:
                 if verbose:

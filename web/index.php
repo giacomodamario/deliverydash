@@ -31,8 +31,6 @@ if ($user_brand_id && get_user_role() !== 'admin') {
     </nav>
 
     <div class="container brand-selector">
-        <h1>Select Brand</h1>
-
         <?php if (empty($brands)): ?>
         <p class="empty">No brands yet. Import some invoices first.</p>
         <?php else: ?>

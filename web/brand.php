@@ -29,6 +29,7 @@ $tooltips = get_kpi_tooltips();
 $hero = get_hero_metrics_with_trends($id, $date_range);
 $costs = get_platform_costs($id, $date_range['start'], $date_range['end']);
 $promos = get_promo_stats($id, $date_range['start'], $date_range['end']);
+$refund_breakdown = get_refund_breakdown($id, $date_range['start'], $date_range['end']);
 $breakdown = get_order_breakdown($id, $date_range['start'], $date_range['end']);
 $growth = get_growth_comparisons($id);
 $patterns = get_day_patterns($id, $date_range['start'], $date_range['end']);
@@ -141,56 +142,87 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
             </div>
         </div>
 
-        <!-- ROW 2: Platform Costs + Promos -->
+        <!-- ROW 2: Platform Costs -->
         <div class="grid-2">
             <div class="card">
                 <h2>Platform Costs</h2>
                 <div class="metric-row">
                     <span class="metric-label">Commission <span class="info-tooltip" data-tooltip="<?= h($tooltips['commission']) ?>">ⓘ</span></span>
                     <span class="metric-value danger"><?= format_money($costs['commission']) ?></span>
+                    <span class="metric-pct"><?= format_percent($costs['period_net'] > 0 ? ($costs['commission'] / $costs['period_net']) * 100 : 0) ?> of net</span>
                 </div>
                 <div class="metric-row">
-                    <span class="metric-label">Avg Rate <span class="info-tooltip" data-tooltip="<?= h($tooltips['avg_rate']) ?>">ⓘ</span></span>
-                    <span class="metric-value"><?= format_percent($costs['avg_rate']) ?></span>
-                </div>
-                <div class="metric-row">
-                    <span class="metric-label">Discount Commission <span class="info-tooltip" data-tooltip="<?= h($tooltips['discount_commission']) ?>">ⓘ</span></span>
+                    <span class="metric-label">Commission on Funded Amount <span class="info-tooltip" data-tooltip="<?= h($tooltips['discount_commission']) ?>">ⓘ</span></span>
                     <span class="metric-value danger"><?= format_money($costs['discount_commission']) ?></span>
-                </div>
-                <div class="metric-row">
-                    <span class="metric-label">Ad Fees <span class="info-tooltip" data-tooltip="<?= h($tooltips['ad_fee']) ?>">ⓘ</span></span>
-                    <span class="metric-value danger"><?= format_money($costs['ad_fee']) ?></span>
+                    <span class="metric-pct"><?= format_percent($costs['period_net'] > 0 ? ($costs['discount_commission'] / $costs['period_net']) * 100 : 0) ?> of net</span>
                 </div>
                 <div class="metric-row">
                     <span class="metric-label">Refunds <span class="info-tooltip" data-tooltip="<?= h($tooltips['refunds']) ?>">ⓘ</span></span>
-                    <span class="metric-value danger"><?= format_money($costs['refunds']) ?> <small>(<?= format_percent($costs['refund_pct']) ?> of net)</small></span>
+                    <span class="metric-value danger"><?= format_money($costs['refunds']) ?></span>
+                    <span class="metric-pct"><?= format_percent($costs['refund_pct']) ?> of net</span>
                 </div>
                 <div class="metric-row total">
                     <span class="metric-label">Total Costs</span>
-                    <span class="metric-value danger"><?= format_money($costs['total']) ?></span>
+                    <span class="metric-value danger"><?= format_money($costs['commission'] + $costs['discount_commission'] + $costs['refunds']) ?></span>
                 </div>
             </div>
 
             <div class="card">
-                <h2>Promos & Marketing</h2>
+                <h2>Marketing & Promos</h2>
+                <div class="metric-row">
+                    <span class="metric-label">Ads <span class="info-tooltip" data-tooltip="<?= h($tooltips['ad_fee']) ?>">ⓘ</span></span>
+                    <span class="metric-value warning"><?= format_money($promos['ads']) ?></span>
+                    <span class="metric-pct"><?= format_percent($promos['ads_pct']) ?> of gross</span>
+                </div>
                 <div class="metric-row">
                     <span class="metric-label">Restaurant Funded <span class="info-tooltip" data-tooltip="<?= h($tooltips['restaurant_promos']) ?>">ⓘ</span></span>
-                    <span class="metric-value warning"><?= format_money($promos['restaurant_promos']) ?> <small>(<?= format_percent($promos['restaurant_pct']) ?>)</small></span>
+                    <span class="metric-value warning"><?= format_money($promos['restaurant_promos']) ?></span>
+                    <span class="metric-pct"><?= format_percent($promos['restaurant_pct']) ?> of gross</span>
                 </div>
                 <div class="metric-row">
                     <span class="metric-label">Platform Funded <span class="info-tooltip" data-tooltip="<?= h($tooltips['platform_promos']) ?>">ⓘ</span></span>
-                    <span class="metric-value success"><?= format_money($promos['platform_promos']) ?> <small>(<?= format_percent($promos['platform_pct']) ?>)</small></span>
-                </div>
-                <div class="metric-row">
-                    <span class="metric-label">Tips <span class="info-tooltip" data-tooltip="<?= h($tooltips['tips']) ?>">ⓘ</span></span>
-                    <span class="metric-value success"><?= format_money($promos['tips']) ?></span>
+                    <span class="metric-value success"><?= format_money($promos['platform_promos']) ?></span>
+                    <span class="metric-pct"><?= format_percent($promos['platform_pct']) ?> of gross</span>
                 </div>
                 <div class="metric-row total">
                     <span class="metric-label">Total Promos</span>
-                    <span class="metric-value"><?= format_money($promos['total_promos']) ?> <small>(<?= format_percent($promos['total_pct']) ?> of gross)</small></span>
+                    <span class="metric-value"><?= format_money($promos['total_promos']) ?></span>
+                    <span class="metric-pct"><?= format_percent($promos['total_pct']) ?> of gross</span>
                 </div>
             </div>
         </div>
+
+        <!-- ROW 3: Refunds Breakdown -->
+        <?php if (!empty($refund_breakdown['items'])): ?>
+        <div class="card">
+            <h2>Refunds Breakdown</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Reason</th>
+                        <th>Count</th>
+                        <th>Amount</th>
+                        <th>% of Total</th>
+                        <th>Primary Fault</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($refund_breakdown['items'] as $r): ?>
+                    <tr>
+                        <td><?= h($r['reason']) ?></td>
+                        <td><?= number_format($r['count']) ?></td>
+                        <td><?= format_money($r['amount']) ?></td>
+                        <td><?= format_percent($r['pct']) ?></td>
+                        <td><span class="fault-badge <?= strtolower($r['fault']) === 'platform' || strtolower($r['fault']) === 'deliveroo' ? 'platform' : 'restaurant' ?>"><?= h($r['fault']) ?></span></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php if ($refund_breakdown['platform_fault_pct'] > 0): ?>
+            <p class="insight-text"><?= format_percent($refund_breakdown['platform_fault_pct']) ?> of refunds are Platform fault (potentially disputable)</p>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
 
         <!-- ROW 3: Growth Comparisons -->
         <div class="card">
@@ -345,7 +377,11 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
         function updateChart() {
             const kpi = document.getElementById('chartKpi').value;
             const showComparison = document.getElementById('showComparison').checked;
-            const labels = chartData.map((d, i) => 'Day ' + (i + 1));
+            // Use actual dates instead of "Day 1, Day 2"
+            const labels = chartData.map(d => {
+                const date = new Date(d.order_date);
+                return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+            });
 
             let data, dataPrev, label, color, isCurrency = true, isPercent = false;
 

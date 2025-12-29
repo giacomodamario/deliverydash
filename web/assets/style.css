@@ -898,6 +898,43 @@ code {
     font-size: 0.8rem;
 }
 
+/* Metric Percentage */
+.metric-pct {
+    font-size: 0.8rem;
+    color: var(--gray-500);
+    white-space: nowrap;
+}
+
+/* Fault Badge */
+.fault-badge {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.fault-badge.platform {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.fault-badge.restaurant {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+/* Insight Text */
+.insight-text {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    background: #f0fdf4;
+    border-left: 3px solid var(--success);
+    border-radius: 0 4px 4px 0;
+    font-size: 0.9rem;
+    color: #166534;
+}
+
 /* Responsive */
 @media (max-width: 1200px) {
     .growth-grid {

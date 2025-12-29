@@ -120,17 +120,18 @@ function get_date_range(string $range, ?string $custom_start = null, ?string $cu
                 'days' => $days_in_period,
                 'is_partial' => true
             ];
-        case 'l4l': // Like for Like - last 4 weeks
+        case 'l4l': // Like for Like - last 4 weeks vs SAME 4 weeks LAST YEAR
             $start = (clone $last_date)->modify('-27 days')->format('Y-m-d');
-            $prev_start = (clone $last_date)->modify('-55 days')->format('Y-m-d');
-            $prev_end = (clone $last_date)->modify('-28 days')->format('Y-m-d');
+            // Same period LAST YEAR (not previous 4 weeks)
+            $prev_start = (clone $last_date)->modify('-1 year')->modify('-27 days')->format('Y-m-d');
+            $prev_end = (clone $last_date)->modify('-1 year')->format('Y-m-d');
             return [
                 'start' => $start,
                 'end' => $end_date,
                 'prev_start' => $prev_start,
                 'prev_end' => $prev_end,
-                'label' => 'Last 4 Weeks',
-                'prev_label' => 'vs ' . format_date_short($prev_start) . ' - ' . format_date_short($prev_end),
+                'label' => 'Last 4 Weeks (L4L)',
+                'prev_label' => 'vs ' . format_date_short($prev_start) . ' - ' . format_date_short($prev_end) . ' (LY)',
                 'days' => 28,
                 'is_partial' => false
             ];
@@ -256,7 +257,7 @@ function get_promo_stats(int $brand_id, string $start, string $end): array {
         SELECT
             COALESCE(SUM(o.promo_restaurant), 0) as restaurant_promos,
             COALESCE(SUM(o.promo_platform), 0) as platform_promos,
-            COALESCE(SUM(o.tips), 0) as tips,
+            COALESCE(SUM(o.ad_fee), 0) as ads,
             COALESCE(SUM(o.gross_value), 0) as period_gross
         FROM orders o
         JOIN locations l ON o.location_id = l.id
@@ -264,7 +265,7 @@ function get_promo_stats(int $brand_id, string $start, string $end): array {
         AND o.order_date BETWEEN ? AND ?
     ";
     $result = query_one($sql, [$brand_id, $start, $end]) ?: [
-        'restaurant_promos' => 0, 'platform_promos' => 0, 'tips' => 0, 'period_gross' => 0
+        'restaurant_promos' => 0, 'platform_promos' => 0, 'ads' => 0, 'period_gross' => 0
     ];
     $result['total_promos'] = $result['restaurant_promos'] + $result['platform_promos'];
 
@@ -272,9 +273,53 @@ function get_promo_stats(int $brand_id, string $start, string $end): array {
     $gross = $result['period_gross'];
     $result['restaurant_pct'] = $gross > 0 ? ($result['restaurant_promos'] / $gross) * 100 : 0;
     $result['platform_pct'] = $gross > 0 ? ($result['platform_promos'] / $gross) * 100 : 0;
+    $result['ads_pct'] = $gross > 0 ? ($result['ads'] / $gross) * 100 : 0;
     $result['total_pct'] = $gross > 0 ? ($result['total_promos'] / $gross) * 100 : 0;
 
     return $result;
+}
+
+// === REFUNDS BREAKDOWN ===
+
+function get_refund_breakdown(int $brand_id, string $start, string $end): array {
+    $sql = "
+        SELECT
+            COALESCE(o.refund_reason, 'Unknown') as reason,
+            COALESCE(o.refund_fault, 'Unknown') as fault,
+            COUNT(*) as count,
+            SUM(o.refund) as amount
+        FROM orders o
+        JOIN locations l ON o.location_id = l.id
+        WHERE l.brand_id = ?
+        AND o.order_date BETWEEN ? AND ?
+        AND o.refund > 0
+        GROUP BY o.refund_reason, o.refund_fault
+        ORDER BY amount DESC
+    ";
+    $refunds = query($sql, [$brand_id, $start, $end]);
+
+    // Calculate totals and percentages
+    $total_amount = array_sum(array_column($refunds, 'amount'));
+    $total_count = array_sum(array_column($refunds, 'count'));
+
+    // Add percentages and find platform fault amount
+    $platform_fault_amount = 0;
+    foreach ($refunds as &$r) {
+        $r['pct'] = $total_amount > 0 ? ($r['amount'] / $total_amount) * 100 : 0;
+        if (stripos($r['fault'], 'platform') !== false || stripos($r['fault'], 'deliveroo') !== false) {
+            $platform_fault_amount += $r['amount'];
+        }
+    }
+
+    $platform_fault_pct = $total_amount > 0 ? ($platform_fault_amount / $total_amount) * 100 : 0;
+
+    return [
+        'items' => $refunds,
+        'total_amount' => $total_amount,
+        'total_count' => $total_count,
+        'platform_fault_amount' => $platform_fault_amount,
+        'platform_fault_pct' => $platform_fault_pct
+    ];
 }
 
 // === ORDER BREAKDOWN ===
@@ -473,18 +518,17 @@ function get_daily_data(int $brand_id, string $start, string $end): array {
 
 function get_kpi_tooltips(): array {
     return [
-        'gross' => 'Total order value including VAT',
-        'net' => 'Amount received after all platform costs (commission, refunds, fees)',
-        'orders' => 'Total number of orders in the period',
-        'aov' => 'Average Order Value = Gross Revenue / Number of Orders',
-        'margin' => 'Platform Margin = (Net / Gross) × 100 - what you keep after fees',
-        'commission' => 'Platform fee charged on each order',
-        'avg_rate' => 'Average Commission Rate = (Total Commission / Gross) × 100',
-        'refunds' => 'Money returned to customers for cancelled or problematic orders',
-        'ad_fee' => 'Marketing/advertising fees charged by the platform (Annunci Marketer)',
-        'discount_commission' => 'Commission charged on restaurant-funded discounts',
-        'restaurant_promos' => 'Discounts funded by your restaurant',
-        'platform_promos' => 'Discounts funded by the delivery platform',
-        'tips' => 'Customer tips received'
+        'gross' => 'Total order value',
+        'net' => 'Amount received after all platform costs',
+        'orders' => 'Total number of orders',
+        'aov' => 'Average Order Value = Gross / Orders',
+        'margin' => 'Net / Gross × 100 - what you keep after platform fees',
+        'commission' => 'Platform fee on each order',
+        'avg_rate' => 'Average Commission Rate = (Commission / Gross) × 100',
+        'refunds' => 'Money returned to customers for complaints',
+        'ad_fee' => 'Annunci Marketer - paid advertising on the platform',
+        'discount_commission' => 'Additional commission charged on restaurant-funded discounts',
+        'restaurant_promos' => 'Discount amounts you funded for promotions',
+        'platform_promos' => 'Discount amounts Deliveroo funded'
     ];
 }
