@@ -227,10 +227,13 @@ h2 {
 
 .metric-label {
     color: var(--gray-700);
+    flex: 1;
 }
 
 .metric-value {
     font-weight: 600;
+    text-align: right;
+    min-width: 100px;
 }
 
 .metric-value.danger {
@@ -635,14 +638,21 @@ code {
 .info-tooltip {
     position: relative;
     display: inline-block;
-    cursor: help;
+    cursor: help !important;
     font-size: 0.75rem;
     color: var(--gray-400);
     margin-left: 0.25rem;
+    user-select: none;
 }
 
 .info-tooltip:hover {
     color: var(--primary);
+    cursor: help !important;
+}
+
+/* Right-align class for table cells */
+.text-right {
+    text-align: right !important;
 }
 
 .info-tooltip::after {
@@ -903,6 +913,8 @@ code {
     font-size: 0.8rem;
     color: var(--gray-500);
     white-space: nowrap;
+    text-align: right;
+    min-width: 90px;
 }
 
 /* Fault Badge */

@@ -167,20 +167,54 @@ function get_brand(int $id): ?array {
 function get_hero_metrics(int $brand_id, string $start, string $end): array {
     $sql = "
         SELECT
-            COALESCE(SUM(o.gross_value), 0) as gross,
-            COALESCE(SUM(o.net_payout), 0) as net,
+            COALESCE(SUM(o.gross_value), 0) as raw_gross,
+            COALESCE(SUM(o.net_payout), 0) as net_payout,
             COUNT(o.id) as orders,
-            COALESCE(AVG(o.gross_value), 0) as aov,
-            CASE WHEN SUM(o.gross_value) > 0
-                THEN (SUM(o.net_payout) / SUM(o.gross_value)) * 100
-                ELSE 0 END as margin
+            COALESCE(SUM(o.promo_restaurant), 0) as promo_restaurant,
+            COALESCE(SUM(o.commission), 0) as commission,
+            COALESCE(SUM(o.discount_commission), 0) as discount_commission,
+            COALESCE(SUM(o.refund), 0) as refunds,
+            COALESCE(SUM(o.ad_fee), 0) as ad_fee
         FROM orders o
         JOIN locations l ON o.location_id = l.id
         WHERE l.brand_id = ?
         AND o.order_date BETWEEN ? AND ?
     ";
-    return query_one($sql, [$brand_id, $start, $end]) ?: [
-        'gross' => 0, 'net' => 0, 'orders' => 0, 'aov' => 0, 'margin' => 0
+    $row = query_one($sql, [$brand_id, $start, $end]) ?: [
+        'raw_gross' => 0, 'net_payout' => 0, 'orders' => 0, 'promo_restaurant' => 0,
+        'commission' => 0, 'discount_commission' => 0, 'refunds' => 0, 'ad_fee' => 0
+    ];
+
+    // NEW CALCULATIONS:
+    // Gross Revenue = SUM(gross_value) * 0.9 (remove 10% VAT)
+    $gross = $row['raw_gross'] * 0.9;
+
+    // Net Revenue = Gross Revenue - Restaurant Funded Discounts
+    $net_revenue = $gross - $row['promo_restaurant'];
+
+    // Net Payout = Net Revenue - Commission - Commission on Funded - Refunds - Ads
+    $net_payout = $net_revenue - $row['commission'] - $row['discount_commission'] - $row['refunds'] - $row['ad_fee'];
+
+    // AOV = Gross Revenue / Orders
+    $aov = $row['orders'] > 0 ? $gross / $row['orders'] : 0;
+
+    // Platform Margin = Net Payout / Gross Revenue × 100
+    $margin = $gross > 0 ? ($net_payout / $gross) * 100 : 0;
+
+    return [
+        'gross' => $gross,
+        'net_revenue' => $net_revenue,
+        'net_payout' => $net_payout,
+        'orders' => $row['orders'],
+        'aov' => $aov,
+        'margin' => $margin,
+        // Keep raw values for other calculations
+        'raw_gross' => $row['raw_gross'],
+        'promo_restaurant' => $row['promo_restaurant'],
+        'commission' => $row['commission'],
+        'discount_commission' => $row['discount_commission'],
+        'refunds' => $row['refunds'],
+        'ad_fee' => $row['ad_fee']
     ];
 }
 
@@ -194,9 +228,9 @@ function get_hero_metrics_with_trends(int $brand_id, array $date_range): array {
             'value' => $current['gross'],
             'trend' => format_trend($current['gross'], $previous['gross'], $prev_label)
         ],
-        'net' => [
-            'value' => $current['net'],
-            'trend' => format_trend($current['net'], $previous['net'], $prev_label)
+        'net_payout' => [
+            'value' => $current['net_payout'],
+            'trend' => format_trend($current['net_payout'], $previous['net_payout'], $prev_label)
         ],
         'orders' => [
             'value' => $current['orders'],
@@ -209,13 +243,15 @@ function get_hero_metrics_with_trends(int $brand_id, array $date_range): array {
         'margin' => [
             'value' => $current['margin'],
             'trend' => format_trend($current['margin'], $previous['margin'], $prev_label)
-        ]
+        ],
+        // Pass through net_revenue for cost calculations
+        'net_revenue' => $current['net_revenue']
     ];
 }
 
 // === PLATFORM COSTS ===
 
-function get_platform_costs(int $brand_id, string $start, string $end, float $gross = 0): array {
+function get_platform_costs(int $brand_id, string $start, string $end, float $net_revenue = 0): array {
     $sql = "
         SELECT
             COALESCE(SUM(o.commission), 0) as commission,
@@ -224,7 +260,9 @@ function get_platform_costs(int $brand_id, string $start, string $end, float $gr
             COALESCE(SUM(o.net_payout), 0) as period_net,
             COALESCE(SUM(o.vat), 0) as vat,
             COALESCE(SUM(o.ad_fee), 0) as ad_fee,
-            COALESCE(SUM(o.discount_commission), 0) as discount_commission
+            COALESCE(SUM(o.discount_commission), 0) as discount_commission,
+            COALESCE(SUM(o.promo_restaurant), 0) as promo_restaurant,
+            COALESCE(SUM(o.promo_platform), 0) as promo_platform
         FROM orders o
         JOIN locations l ON o.location_id = l.id
         WHERE l.brand_id = ?
@@ -232,27 +270,44 @@ function get_platform_costs(int $brand_id, string $start, string $end, float $gr
     ";
     $result = query_one($sql, [$brand_id, $start, $end]) ?: [
         'commission' => 0, 'refunds' => 0, 'period_gross' => 0, 'period_net' => 0,
-        'vat' => 0, 'ad_fee' => 0, 'discount_commission' => 0
+        'vat' => 0, 'ad_fee' => 0, 'discount_commission' => 0, 'promo_restaurant' => 0, 'promo_platform' => 0
     ];
 
-    // Calculate avg_rate from actual values (commission / gross * 100)
-    $result['avg_rate'] = $result['period_gross'] > 0
-        ? ($result['commission'] / $result['period_gross']) * 100
+    // Calculate net_revenue if not provided
+    // Net Revenue = Gross (with VAT removed) - Restaurant Funded Discounts
+    $gross_no_vat = $result['period_gross'] * 0.9;
+    $calculated_net_revenue = $net_revenue > 0 ? $net_revenue : ($gross_no_vat - $result['promo_restaurant']);
+    $result['net_revenue'] = $calculated_net_revenue;
+
+    // All percentages are now "% of net revenue"
+    $result['commission_pct'] = $calculated_net_revenue > 0
+        ? ($result['commission'] / $calculated_net_revenue) * 100
         : 0;
 
-    // Calculate refund % of net
-    $result['refund_pct'] = $result['period_net'] > 0
-        ? ($result['refunds'] / $result['period_net']) * 100
+    $result['discount_commission_pct'] = $calculated_net_revenue > 0
+        ? ($result['discount_commission'] / $calculated_net_revenue) * 100
         : 0;
 
-    $result['total'] = $result['commission'] + $result['refunds'] + $result['ad_fee'] + $result['discount_commission'];
+    $result['refund_pct'] = $calculated_net_revenue > 0
+        ? ($result['refunds'] / $calculated_net_revenue) * 100
+        : 0;
+
+    $result['ad_fee_pct'] = $calculated_net_revenue > 0
+        ? ($result['ad_fee'] / $calculated_net_revenue) * 100
+        : 0;
+
+    $result['platform_promo_pct'] = $calculated_net_revenue > 0
+        ? ($result['promo_platform'] / $calculated_net_revenue) * 100
+        : 0;
+
+    $result['total'] = $result['commission'] + $result['discount_commission'] + $result['refunds'] + $result['ad_fee'];
 
     return $result;
 }
 
 // === PROMOS & MARKETING ===
 
-function get_promo_stats(int $brand_id, string $start, string $end): array {
+function get_promo_stats(int $brand_id, string $start, string $end, float $net_revenue = 0): array {
     $sql = "
         SELECT
             COALESCE(SUM(o.promo_restaurant), 0) as restaurant_promos,
@@ -269,19 +324,39 @@ function get_promo_stats(int $brand_id, string $start, string $end): array {
     ];
     $result['total_promos'] = $result['restaurant_promos'] + $result['platform_promos'];
 
-    // Calculate percentages of gross
-    $gross = $result['period_gross'];
-    $result['restaurant_pct'] = $gross > 0 ? ($result['restaurant_promos'] / $gross) * 100 : 0;
-    $result['platform_pct'] = $gross > 0 ? ($result['platform_promos'] / $gross) * 100 : 0;
-    $result['ads_pct'] = $gross > 0 ? ($result['ads'] / $gross) * 100 : 0;
-    $result['total_pct'] = $gross > 0 ? ($result['total_promos'] / $gross) * 100 : 0;
+    // Calculate net_revenue if not provided
+    $gross_no_vat = $result['period_gross'] * 0.9;
+    $calculated_net_revenue = $net_revenue > 0 ? $net_revenue : ($gross_no_vat - $result['restaurant_promos']);
+    $result['net_revenue'] = $calculated_net_revenue;
+
+    // All percentages are now "% of net revenue"
+    $result['restaurant_pct'] = $calculated_net_revenue > 0 ? ($result['restaurant_promos'] / $calculated_net_revenue) * 100 : 0;
+    $result['platform_pct'] = $calculated_net_revenue > 0 ? ($result['platform_promos'] / $calculated_net_revenue) * 100 : 0;
+    $result['ads_pct'] = $calculated_net_revenue > 0 ? ($result['ads'] / $calculated_net_revenue) * 100 : 0;
+    $result['total_pct'] = $calculated_net_revenue > 0 ? ($result['total_promos'] / $calculated_net_revenue) * 100 : 0;
 
     return $result;
 }
 
 // === REFUNDS BREAKDOWN ===
 
+function normalize_fault(string $fault): string {
+    $fault = trim($fault);
+    if (empty($fault) || $fault === 'Unknown' || $fault === 'null') {
+        return 'Unknown';
+    }
+    $lower = strtolower($fault);
+    if (strpos($lower, 'platform') !== false || strpos($lower, 'deliveroo') !== false) {
+        return 'Platform';
+    }
+    if (strpos($lower, 'restaurant') !== false) {
+        return 'Restaurant';
+    }
+    return ucfirst($fault);
+}
+
 function get_refund_breakdown(int $brand_id, string $start, string $end): array {
+    // Get refunds by reason
     $sql = "
         SELECT
             COALESCE(o.refund_reason, 'Unknown') as reason,
@@ -298,27 +373,46 @@ function get_refund_breakdown(int $brand_id, string $start, string $end): array 
     ";
     $refunds = query($sql, [$brand_id, $start, $end]);
 
-    // Calculate totals and percentages
+    // Calculate totals
     $total_amount = array_sum(array_column($refunds, 'amount'));
     $total_count = array_sum(array_column($refunds, 'count'));
 
-    // Add percentages and find platform fault amount
-    $platform_fault_amount = 0;
+    // Normalize fault values and add percentages
+    $by_fault = ['Restaurant' => ['count' => 0, 'amount' => 0], 'Platform' => ['count' => 0, 'amount' => 0], 'Unknown' => ['count' => 0, 'amount' => 0]];
+
     foreach ($refunds as &$r) {
+        $r['fault'] = normalize_fault($r['fault']);
         $r['pct'] = $total_amount > 0 ? ($r['amount'] / $total_amount) * 100 : 0;
-        if (stripos($r['fault'], 'platform') !== false || stripos($r['fault'], 'deliveroo') !== false) {
-            $platform_fault_amount += $r['amount'];
+
+        // Aggregate by fault party
+        $fault_key = $r['fault'];
+        if (!isset($by_fault[$fault_key])) {
+            $by_fault[$fault_key] = ['count' => 0, 'amount' => 0];
         }
+        $by_fault[$fault_key]['count'] += $r['count'];
+        $by_fault[$fault_key]['amount'] += $r['amount'];
     }
 
-    $platform_fault_pct = $total_amount > 0 ? ($platform_fault_amount / $total_amount) * 100 : 0;
+    // Add percentages to by_fault
+    foreach ($by_fault as $key => &$data) {
+        $data['pct'] = $total_amount > 0 ? ($data['amount'] / $total_amount) * 100 : 0;
+    }
+
+    // Sort by_fault by amount descending
+    uasort($by_fault, fn($a, $b) => $b['amount'] <=> $a['amount']);
+
+    $restaurant_fault_amount = $by_fault['Restaurant']['amount'] ?? 0;
+    $platform_fault_amount = $by_fault['Platform']['amount'] ?? 0;
 
     return [
         'items' => $refunds,
+        'by_fault' => $by_fault,
         'total_amount' => $total_amount,
         'total_count' => $total_count,
+        'restaurant_fault_amount' => $restaurant_fault_amount,
+        'restaurant_fault_pct' => $total_amount > 0 ? ($restaurant_fault_amount / $total_amount) * 100 : 0,
         'platform_fault_amount' => $platform_fault_amount,
-        'platform_fault_pct' => $platform_fault_pct
+        'platform_fault_pct' => $total_amount > 0 ? ($platform_fault_amount / $total_amount) * 100 : 0
     ];
 }
 
@@ -518,17 +612,17 @@ function get_daily_data(int $brand_id, string $start, string $end): array {
 
 function get_kpi_tooltips(): array {
     return [
-        'gross' => 'Total order value',
-        'net' => 'Amount received after all platform costs',
+        'gross' => 'Total order value net of 10% VAT',
+        'net_revenue' => 'Gross revenue minus restaurant-funded discounts',
+        'net_payout' => 'Amount received after all platform costs and fees',
         'orders' => 'Total number of orders',
-        'aov' => 'Average Order Value = Gross / Orders',
-        'margin' => 'Net / Gross × 100 - what you keep after platform fees',
+        'aov' => 'Average Order Value = Gross Revenue / Orders',
+        'margin' => 'Net Payout / Gross Revenue × 100 - what you keep',
         'commission' => 'Platform fee on each order',
-        'avg_rate' => 'Average Commission Rate = (Commission / Gross) × 100',
+        'discount_commission' => 'Commission charged on restaurant-funded discount amounts',
         'refunds' => 'Money returned to customers for complaints',
         'ad_fee' => 'Annunci Marketer - paid advertising on the platform',
-        'discount_commission' => 'Additional commission charged on restaurant-funded discounts',
-        'restaurant_promos' => 'Discount amounts you funded for promotions',
-        'platform_promos' => 'Discount amounts Deliveroo funded'
+        'restaurant_promos' => 'Discount amounts funded by the restaurant for promotions',
+        'platform_promos' => 'Discount amounts funded by Deliveroo'
     ];
 }

@@ -27,8 +27,9 @@ $tooltips = get_kpi_tooltips();
 
 // Fetch all data
 $hero = get_hero_metrics_with_trends($id, $date_range);
-$costs = get_platform_costs($id, $date_range['start'], $date_range['end']);
-$promos = get_promo_stats($id, $date_range['start'], $date_range['end']);
+$net_revenue = $hero['net_revenue'] ?? 0;
+$costs = get_platform_costs($id, $date_range['start'], $date_range['end'], $net_revenue);
+$promos = get_promo_stats($id, $date_range['start'], $date_range['end'], $net_revenue);
 $refund_breakdown = get_refund_breakdown($id, $date_range['start'], $date_range['end']);
 $breakdown = get_order_breakdown($id, $date_range['start'], $date_range['end']);
 $growth = get_growth_comparisons($id);
@@ -102,12 +103,12 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
             </div>
             <div class="stat-card">
                 <div class="stat-header">
-                    <span class="stat-value"><?= format_money($hero['net']['value']) ?></span>
+                    <span class="stat-value"><?= format_money($hero['net_payout']['value']) ?></span>
                 </div>
-                <div class="stat-label">Net Payout <span class="info-tooltip" data-tooltip="<?= h($tooltips['net']) ?>">ⓘ</span></div>
-                <div class="stat-trend <?= $hero['net']['trend']['direction'] ?>">
-                    <?= $hero['net']['trend']['label'] ?>
-                    <span class="trend-period"><?= h($hero['net']['trend']['comparison']) ?></span>
+                <div class="stat-label">Net Payout <span class="info-tooltip" data-tooltip="<?= h($tooltips['net_payout']) ?>">ⓘ</span></div>
+                <div class="stat-trend <?= $hero['net_payout']['trend']['direction'] ?>">
+                    <?= $hero['net_payout']['trend']['label'] ?>
+                    <span class="trend-period"><?= h($hero['net_payout']['trend']['comparison']) ?></span>
                 </div>
             </div>
             <div class="stat-card">
@@ -149,21 +150,31 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
                 <div class="metric-row">
                     <span class="metric-label">Commission <span class="info-tooltip" data-tooltip="<?= h($tooltips['commission']) ?>">ⓘ</span></span>
                     <span class="metric-value danger"><?= format_money($costs['commission']) ?></span>
-                    <span class="metric-pct"><?= format_percent($costs['period_net'] > 0 ? ($costs['commission'] / $costs['period_net']) * 100 : 0) ?> of net</span>
+                    <span class="metric-pct"><?= format_percent($costs['commission_pct']) ?> of net rev</span>
                 </div>
                 <div class="metric-row">
                     <span class="metric-label">Commission on Funded Amount <span class="info-tooltip" data-tooltip="<?= h($tooltips['discount_commission']) ?>">ⓘ</span></span>
                     <span class="metric-value danger"><?= format_money($costs['discount_commission']) ?></span>
-                    <span class="metric-pct"><?= format_percent($costs['period_net'] > 0 ? ($costs['discount_commission'] / $costs['period_net']) * 100 : 0) ?> of net</span>
+                    <span class="metric-pct"><?= format_percent($costs['discount_commission_pct']) ?> of net rev</span>
                 </div>
                 <div class="metric-row">
                     <span class="metric-label">Refunds <span class="info-tooltip" data-tooltip="<?= h($tooltips['refunds']) ?>">ⓘ</span></span>
                     <span class="metric-value danger"><?= format_money($costs['refunds']) ?></span>
-                    <span class="metric-pct"><?= format_percent($costs['refund_pct']) ?> of net</span>
+                    <span class="metric-pct"><?= format_percent($costs['refund_pct']) ?> of net rev</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Ads <span class="info-tooltip" data-tooltip="<?= h($tooltips['ad_fee']) ?>">ⓘ</span></span>
+                    <span class="metric-value danger"><?= format_money($costs['ad_fee']) ?></span>
+                    <span class="metric-pct"><?= format_percent($costs['ad_fee_pct']) ?> of net rev</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Platform Funded <span class="info-tooltip" data-tooltip="<?= h($tooltips['platform_promos']) ?>">ⓘ</span></span>
+                    <span class="metric-value success"><?= format_money($costs['promo_platform']) ?></span>
+                    <span class="metric-pct"><?= format_percent($costs['platform_promo_pct']) ?> of net rev</span>
                 </div>
                 <div class="metric-row total">
                     <span class="metric-label">Total Costs</span>
-                    <span class="metric-value danger"><?= format_money($costs['commission'] + $costs['discount_commission'] + $costs['refunds']) ?></span>
+                    <span class="metric-value danger"><?= format_money($costs['total']) ?></span>
                 </div>
             </div>
 
@@ -172,55 +183,99 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
                 <div class="metric-row">
                     <span class="metric-label">Ads <span class="info-tooltip" data-tooltip="<?= h($tooltips['ad_fee']) ?>">ⓘ</span></span>
                     <span class="metric-value warning"><?= format_money($promos['ads']) ?></span>
-                    <span class="metric-pct"><?= format_percent($promos['ads_pct']) ?> of gross</span>
+                    <span class="metric-pct"><?= format_percent($promos['ads_pct']) ?> of net rev</span>
                 </div>
                 <div class="metric-row">
                     <span class="metric-label">Restaurant Funded <span class="info-tooltip" data-tooltip="<?= h($tooltips['restaurant_promos']) ?>">ⓘ</span></span>
                     <span class="metric-value warning"><?= format_money($promos['restaurant_promos']) ?></span>
-                    <span class="metric-pct"><?= format_percent($promos['restaurant_pct']) ?> of gross</span>
+                    <span class="metric-pct"><?= format_percent($promos['restaurant_pct']) ?> of net rev</span>
                 </div>
                 <div class="metric-row">
                     <span class="metric-label">Platform Funded <span class="info-tooltip" data-tooltip="<?= h($tooltips['platform_promos']) ?>">ⓘ</span></span>
                     <span class="metric-value success"><?= format_money($promos['platform_promos']) ?></span>
-                    <span class="metric-pct"><?= format_percent($promos['platform_pct']) ?> of gross</span>
+                    <span class="metric-pct"><?= format_percent($promos['platform_pct']) ?> of net rev</span>
                 </div>
                 <div class="metric-row total">
                     <span class="metric-label">Total Promos</span>
                     <span class="metric-value"><?= format_money($promos['total_promos']) ?></span>
-                    <span class="metric-pct"><?= format_percent($promos['total_pct']) ?> of gross</span>
+                    <span class="metric-pct"><?= format_percent($promos['total_pct']) ?> of net rev</span>
                 </div>
             </div>
         </div>
 
         <!-- ROW 3: Refunds Breakdown -->
-        <?php if (!empty($refund_breakdown['items'])): ?>
+        <?php if (!empty($refund_breakdown['items']) || $refund_breakdown['total_count'] > 0): ?>
         <div class="card">
             <h2>Refunds Breakdown</h2>
+
+            <!-- By Fault Party -->
+            <h3 style="font-size: 0.95rem; color: var(--gray-600); margin-bottom: 0.75rem;">By Fault Party</h3>
+            <table class="table" style="margin-bottom: 1.5rem;">
+                <thead>
+                    <tr>
+                        <th>Fault Party</th>
+                        <th class="text-right">Count</th>
+                        <th class="text-right">Amount</th>
+                        <th class="text-right">% of Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($refund_breakdown['by_fault'] as $party => $data): ?>
+                    <?php if ($data['count'] > 0): ?>
+                    <tr>
+                        <td><span class="fault-badge <?= strtolower($party) === 'platform' ? 'platform' : (strtolower($party) === 'restaurant' ? 'restaurant' : '') ?>"><?= h($party) ?></span></td>
+                        <td class="text-right"><?= number_format($data['count']) ?></td>
+                        <td class="text-right"><?= format_money($data['amount']) ?></td>
+                        <td class="text-right"><?= format_percent($data['pct']) ?></td>
+                    </tr>
+                    <?php endif; ?>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+
+            <!-- By Reason -->
+            <?php if (!empty($refund_breakdown['items'])): ?>
+            <h3 style="font-size: 0.95rem; color: var(--gray-600); margin-bottom: 0.75rem;">By Reason</h3>
             <table class="table">
                 <thead>
                     <tr>
                         <th>Reason</th>
-                        <th>Count</th>
-                        <th>Amount</th>
-                        <th>% of Total</th>
-                        <th>Primary Fault</th>
+                        <th class="text-right">Count</th>
+                        <th class="text-right">Amount</th>
+                        <th class="text-right">% of Total</th>
+                        <th>Fault</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php foreach ($refund_breakdown['items'] as $r): ?>
                     <tr>
                         <td><?= h($r['reason']) ?></td>
-                        <td><?= number_format($r['count']) ?></td>
-                        <td><?= format_money($r['amount']) ?></td>
-                        <td><?= format_percent($r['pct']) ?></td>
-                        <td><span class="fault-badge <?= strtolower($r['fault']) === 'platform' || strtolower($r['fault']) === 'deliveroo' ? 'platform' : 'restaurant' ?>"><?= h($r['fault']) ?></span></td>
+                        <td class="text-right"><?= number_format($r['count']) ?></td>
+                        <td class="text-right"><?= format_money($r['amount']) ?></td>
+                        <td class="text-right"><?= format_percent($r['pct']) ?></td>
+                        <td><span class="fault-badge <?= strtolower($r['fault']) === 'platform' ? 'platform' : (strtolower($r['fault']) === 'restaurant' ? 'restaurant' : '') ?>"><?= h($r['fault']) ?></span></td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
-            <?php if ($refund_breakdown['platform_fault_pct'] > 0): ?>
-            <p class="insight-text"><?= format_percent($refund_breakdown['platform_fault_pct']) ?> of refunds are Platform fault (potentially disputable)</p>
             <?php endif; ?>
+
+            <!-- Insights -->
+            <div class="refund-insights" style="margin-top: 1rem;">
+                <?php if ($refund_breakdown['restaurant_fault_amount'] > 0): ?>
+                <p class="insight-text" style="background: #fef2f2; border-left-color: var(--danger); color: #991b1b;">
+                    Restaurant-fault: <?= format_money($refund_breakdown['restaurant_fault_amount']) ?> (<?= format_percent($refund_breakdown['restaurant_fault_pct']) ?>) - your responsibility
+                </p>
+                <?php endif; ?>
+                <?php if ($refund_breakdown['platform_fault_amount'] > 0): ?>
+                <p class="insight-text">
+                    Platform-fault: <?= format_money($refund_breakdown['platform_fault_amount']) ?> (<?= format_percent($refund_breakdown['platform_fault_pct']) ?>) - potentially disputable
+                </p>
+                <p class="insight-text" style="background: #dbeafe; border-left-color: #3b82f6; color: #1e40af;">
+                    Review platform-fault refunds for dispute opportunities
+                </p>
+                <?php endif; ?>
+            </div>
         </div>
         <?php endif; ?>
 
