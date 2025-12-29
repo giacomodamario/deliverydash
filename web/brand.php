@@ -154,6 +154,14 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
                     <span class="metric-value"><?= format_percent($costs['avg_rate']) ?></span>
                 </div>
                 <div class="metric-row">
+                    <span class="metric-label">Discount Commission <span class="info-tooltip" data-tooltip="<?= h($tooltips['discount_commission']) ?>">ⓘ</span></span>
+                    <span class="metric-value danger"><?= format_money($costs['discount_commission']) ?></span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Ad Fees <span class="info-tooltip" data-tooltip="<?= h($tooltips['ad_fee']) ?>">ⓘ</span></span>
+                    <span class="metric-value danger"><?= format_money($costs['ad_fee']) ?></span>
+                </div>
+                <div class="metric-row">
                     <span class="metric-label">Refunds <span class="info-tooltip" data-tooltip="<?= h($tooltips['refunds']) ?>">ⓘ</span></span>
                     <span class="metric-value danger"><?= format_money($costs['refunds']) ?> <small>(<?= format_percent($costs['refund_pct']) ?> of net)</small></span>
                 </div>

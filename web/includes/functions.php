@@ -221,14 +221,17 @@ function get_platform_costs(int $brand_id, string $start, string $end, float $gr
             COALESCE(SUM(o.refund), 0) as refunds,
             COALESCE(SUM(o.gross_value), 0) as period_gross,
             COALESCE(SUM(o.net_payout), 0) as period_net,
-            COALESCE(SUM(o.vat), 0) as vat
+            COALESCE(SUM(o.vat), 0) as vat,
+            COALESCE(SUM(o.ad_fee), 0) as ad_fee,
+            COALESCE(SUM(o.discount_commission), 0) as discount_commission
         FROM orders o
         JOIN locations l ON o.location_id = l.id
         WHERE l.brand_id = ?
         AND o.order_date BETWEEN ? AND ?
     ";
     $result = query_one($sql, [$brand_id, $start, $end]) ?: [
-        'commission' => 0, 'refunds' => 0, 'period_gross' => 0, 'period_net' => 0, 'vat' => 0
+        'commission' => 0, 'refunds' => 0, 'period_gross' => 0, 'period_net' => 0,
+        'vat' => 0, 'ad_fee' => 0, 'discount_commission' => 0
     ];
 
     // Calculate avg_rate from actual values (commission / gross * 100)
@@ -241,7 +244,7 @@ function get_platform_costs(int $brand_id, string $start, string $end, float $gr
         ? ($result['refunds'] / $result['period_net']) * 100
         : 0;
 
-    $result['total'] = $result['commission'] + $result['refunds'];
+    $result['total'] = $result['commission'] + $result['refunds'] + $result['ad_fee'] + $result['discount_commission'];
 
     return $result;
 }
@@ -478,6 +481,8 @@ function get_kpi_tooltips(): array {
         'commission' => 'Platform fee charged on each order',
         'avg_rate' => 'Average Commission Rate = (Total Commission / Gross) × 100',
         'refunds' => 'Money returned to customers for cancelled or problematic orders',
+        'ad_fee' => 'Marketing/advertising fees charged by the platform (Annunci Marketer)',
+        'discount_commission' => 'Commission charged on restaurant-funded discounts',
         'restaurant_promos' => 'Discounts funded by your restaurant',
         'platform_promos' => 'Discounts funded by the delivery platform',
         'tips' => 'Customer tips received'

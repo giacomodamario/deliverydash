@@ -199,10 +199,36 @@ def parse_deliveroo_invoice(filepath: str, verbose: bool = False) -> ParsedInvoi
                     if order.restaurant_name:
                         result.restaurant_name = order.restaurant_name
 
-                # Customer refund
+                # Customer refund (Rimborso al cliente)
                 elif 'Rimborso' in activity or 'Refund' in activity:
                     if order_id in orders_by_id:
                         orders_by_id[order_id].refund_amount = abs(parse_european_number(row.get('adjustment_value')))
+                        # Parse refund reason and fault from notes
+                        notes = str(row.get('notes', '') if not pd.isna(row.get('notes', '')) else '')
+                        # Look for "Refund reason: X"
+                        reason_match = re.search(r'[Rr]efund\s*reason[:\s]+([^,\n]+)', notes)
+                        if reason_match:
+                            orders_by_id[order_id].refund_reason = reason_match.group(1).strip()
+                        # Look for "Party at fault: X"
+                        fault_match = re.search(r'[Pp]arty\s*at\s*fault[:\s]+([^,\n]+)', notes)
+                        if fault_match:
+                            orders_by_id[order_id].refund_fault = fault_match.group(1).strip()
+
+                # Ads fee (Annunci Marketer)
+                elif 'Annunci' in activity or 'Marketer' in activity or 'Ads' in activity:
+                    if order_id in orders_by_id:
+                        orders_by_id[order_id].ad_fee = abs(parse_european_number(row.get('adjustment_value')))
+                    else:
+                        # Ad fee might not be linked to a specific order - create a placeholder
+                        # We'll aggregate these at import time
+                        pass
+
+                # Discount commission (Correzione della fattura a debito with commission on funded discount)
+                elif 'Correzione' in activity or 'fattura' in activity.lower():
+                    notes = str(row.get('notes', '') if not pd.isna(row.get('notes', '')) else '')
+                    if 'commission on funded discount' in notes.lower() or 'commissione' in notes.lower():
+                        if order_id in orders_by_id:
+                            orders_by_id[order_id].discount_commission = abs(parse_european_number(row.get('adjustment_value')))
 
                 # Cash payment adjustment
                 elif 'contanti' in activity.lower() or 'cash' in activity.lower():

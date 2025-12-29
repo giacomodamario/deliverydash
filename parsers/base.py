@@ -33,6 +33,7 @@ class ParsedOrder:
     cash_payment_adjustment: float = 0.0
     is_cash_order: bool = False
     ad_fee: float = 0.0
+    discount_commission: float = 0.0
     wait_time_fee: float = 0.0
     prime_fee: float = 0.0
     flash_deals_fee: float = 0.0

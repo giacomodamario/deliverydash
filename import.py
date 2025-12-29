@@ -110,9 +110,10 @@ def import_csv(filepath: Path, cursor, verbose: bool = False) -> dict:
                 INSERT OR IGNORE INTO orders (
                     location_id, platform, order_id, order_date,
                     gross_value, commission, commission_rate, vat,
-                    net_payout, refund, promo_restaurant, promo_platform,
-                    tips, adjustments, is_cash
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    net_payout, refund, refund_reason, refund_fault,
+                    promo_restaurant, promo_platform,
+                    tips, adjustments, ad_fee, discount_commission, is_cash
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 location_id,
                 "deliveroo",
@@ -124,10 +125,14 @@ def import_csv(filepath: Path, cursor, verbose: bool = False) -> dict:
                 order.vat_amount,
                 order.net_payout,
                 order.refund_amount,
+                order.refund_reason or None,
+                order.refund_fault or None,
                 order.promo_restaurant_funded,
                 order.promo_platform_funded,
                 0,  # tips
                 order.cash_payment_adjustment,
+                order.ad_fee,
+                order.discount_commission,
                 1 if order.is_cash_order else 0
             ))
 
