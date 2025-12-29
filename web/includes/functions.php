@@ -27,17 +27,34 @@ function h(string $str): string {
     return htmlspecialchars($str, ENT_QUOTES, 'UTF-8');
 }
 
-function format_trend(float $current, float $previous, string $prev_label = ''): array {
+function format_trend(float $current, float $previous, string $prev_label = '', bool $check_data_ratio = false): array {
     if ($previous == 0) {
-        return ['value' => 0, 'direction' => 'neutral', 'label' => '—', 'comparison' => ''];
+        return ['value' => 0, 'direction' => 'neutral', 'label' => '—', 'comparison' => '', 'partial_data' => false];
     }
     $change = (($current - $previous) / $previous) * 100;
     $direction = $change > 0 ? 'up' : ($change < 0 ? 'down' : 'neutral');
+
+    // Check for partial/limited comparison data:
+    // If current >> previous (more than 3x higher) AND previous is very small, flag as partial
+    $partial_data = false;
+    if ($check_data_ratio && $current > 0 && $previous > 0) {
+        // If the change is extreme (>200% or <-66%), flag as potentially partial data
+        if ($change > 200 || $change < -66) {
+            $partial_data = true;
+        }
+    }
+
+    $label = ($change >= 0 ? '+' : '') . number_format($change, 1) . '%';
+    if ($partial_data) {
+        $label .= '*';  // Add asterisk to indicate partial data
+    }
+
     return [
         'value' => abs($change),
         'direction' => $direction,
-        'label' => ($change >= 0 ? '+' : '') . number_format($change, 1) . '%',
-        'comparison' => $prev_label
+        'label' => $label,
+        'comparison' => $prev_label,
+        'partial_data' => $partial_data
     ];
 }
 
@@ -162,9 +179,51 @@ function get_brand(int $id): ?array {
     return query_one("SELECT * FROM brands WHERE id = ?", [$id]);
 }
 
+function get_brand_locations(int $brand_id): array {
+    return query("SELECT id, name FROM locations WHERE brand_id = ? ORDER BY name ASC", [$brand_id]);
+}
+
+// === SAME STORE (L4L) HELPERS ===
+
+/**
+ * Get locations that had orders in BOTH periods (for L4L comparisons)
+ */
+function get_same_store_locations(int $brand_id, string $start1, string $end1, string $start2, string $end2): array {
+    $sql = "
+        SELECT DISTINCT l.id
+        FROM locations l
+        WHERE l.brand_id = ?
+        AND EXISTS (
+            SELECT 1 FROM orders o1
+            WHERE o1.location_id = l.id
+            AND o1.order_date BETWEEN ? AND ?
+        )
+        AND EXISTS (
+            SELECT 1 FROM orders o2
+            WHERE o2.location_id = l.id
+            AND o2.order_date BETWEEN ? AND ?
+        )
+    ";
+    $results = query($sql, [$brand_id, $start1, $end1, $start2, $end2]);
+    return array_column($results, 'id');
+}
+
 // === HERO METRICS ===
 
-function get_hero_metrics(int $brand_id, string $start, string $end): array {
+/**
+ * Get hero metrics, optionally filtered by specific location IDs
+ */
+function get_hero_metrics(int $brand_id, string $start, string $end, ?array $location_ids = null): array {
+    $params = [$brand_id, $start, $end];
+    $location_filter = '';
+
+    // Add location filter for same-store (L4L) comparisons
+    if ($location_ids !== null && count($location_ids) > 0) {
+        $placeholders = implode(',', array_fill(0, count($location_ids), '?'));
+        $location_filter = " AND o.location_id IN ($placeholders)";
+        $params = array_merge($params, $location_ids);
+    }
+
     $sql = "
         SELECT
             COALESCE(SUM(o.gross_value), 0) as raw_gross,
@@ -179,8 +238,9 @@ function get_hero_metrics(int $brand_id, string $start, string $end): array {
         JOIN locations l ON o.location_id = l.id
         WHERE l.brand_id = ?
         AND o.order_date BETWEEN ? AND ?
+        $location_filter
     ";
-    $row = query_one($sql, [$brand_id, $start, $end]) ?: [
+    $row = query_one($sql, $params) ?: [
         'raw_gross' => 0, 'net_payout' => 0, 'orders' => 0, 'promo_restaurant' => 0,
         'commission' => 0, 'discount_commission' => 0, 'refunds' => 0, 'ad_fee' => 0
     ];
@@ -228,6 +288,10 @@ function get_hero_metrics_with_trends(int $brand_id, array $date_range): array {
             'value' => $current['gross'],
             'trend' => format_trend($current['gross'], $previous['gross'], $prev_label)
         ],
+        'net_revenue' => [
+            'value' => $current['net_revenue'],
+            'trend' => format_trend($current['net_revenue'], $previous['net_revenue'], $prev_label)
+        ],
         'net_payout' => [
             'value' => $current['net_payout'],
             'trend' => format_trend($current['net_payout'], $previous['net_payout'], $prev_label)
@@ -244,8 +308,8 @@ function get_hero_metrics_with_trends(int $brand_id, array $date_range): array {
             'value' => $current['margin'],
             'trend' => format_trend($current['margin'], $previous['margin'], $prev_label)
         ],
-        // Pass through net_revenue for cost calculations
-        'net_revenue' => $current['net_revenue']
+        // Pass through raw net_revenue for cost calculations
+        'net_revenue_raw' => $current['net_revenue']
     ];
 }
 
@@ -322,7 +386,8 @@ function get_promo_stats(int $brand_id, string $start, string $end, float $net_r
     $result = query_one($sql, [$brand_id, $start, $end]) ?: [
         'restaurant_promos' => 0, 'platform_promos' => 0, 'ads' => 0, 'period_gross' => 0
     ];
-    $result['total_promos'] = $result['restaurant_promos'] + $result['platform_promos'];
+    // Total Promos includes Ads + Restaurant Funded + Platform Funded
+    $result['total_promos'] = $result['ads'] + $result['restaurant_promos'] + $result['platform_promos'];
 
     // Calculate net_revenue if not provided
     $gross_no_vat = $result['period_gross'] * 0.9;
@@ -500,19 +565,24 @@ function get_growth_comparisons(int $brand_id): array {
 
     $this_year = get_hero_metrics($brand_id, $this_year_start, $end_date);
     $last_year = get_hero_metrics($brand_id, $yoy_start_last_year, $yoy_end_last_year);
-    $yoy = format_trend($this_year['gross'], $last_year['gross']);
+    // Use check_data_ratio for YoY to flag extreme changes (likely partial data)
+    $yoy = format_trend($this_year['gross'], $last_year['gross'], '', true);
     $yoy['period'] = format_date_short($this_year_start) . ' - ' . format_date_short($end_date);
     $yoy['vs_period'] = format_date_short($yoy_start_last_year) . ' - ' . format_date_short($yoy_end_last_year);
 
-    // Like for Like - Last 4 weeks vs same 4 weeks LAST YEAR
+    // Like for Like - Last 4 weeks vs same 4 weeks LAST YEAR (SAME STORES ONLY)
     $l4l_start = (clone $last_date)->modify('-27 days')->format('Y-m-d');
     $l4l_end = $end_date;
     // Same period last year
     $l4l_start_ly = (clone $last_date)->modify('-1 year')->modify('-27 days')->format('Y-m-d');
     $l4l_end_ly = (clone $last_date)->modify('-1 year')->format('Y-m-d');
 
-    $l4l_current = get_hero_metrics($brand_id, $l4l_start, $l4l_end);
-    $l4l_prev = get_hero_metrics($brand_id, $l4l_start_ly, $l4l_end_ly);
+    // Get locations that had orders in BOTH periods
+    $same_store_ids = get_same_store_locations($brand_id, $l4l_start, $l4l_end, $l4l_start_ly, $l4l_end_ly);
+
+    // Filter metrics by same-store locations only
+    $l4l_current = get_hero_metrics($brand_id, $l4l_start, $l4l_end, $same_store_ids);
+    $l4l_prev = get_hero_metrics($brand_id, $l4l_start_ly, $l4l_end_ly, $same_store_ids);
     $l4l = format_trend($l4l_current['gross'], $l4l_prev['gross']);
     $l4l['period'] = format_date_short($l4l_start) . ' - ' . format_date_short($l4l_end);
     $l4l['vs_period'] = format_date_short($l4l_start_ly) . ' - ' . format_date_short($l4l_end_ly) . ' (LY)';

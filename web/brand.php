@@ -21,13 +21,19 @@ if (!can_view_brand($id)) {
 $range = $_GET['range'] ?? 'month';
 $custom_start = $_GET['from'] ?? null;
 $custom_end = $_GET['to'] ?? null;
+$compare_type = $_GET['compare'] ?? 'auto';  // auto, yoy, l4l, custom
+$compare_from = $_GET['compare_from'] ?? null;
+$compare_to = $_GET['compare_to'] ?? null;
+$location_id = isset($_GET['location']) ? (int)$_GET['location'] : 0;  // 0 = all locations
+
 $date_range = get_date_range($range, $custom_start, $custom_end);
 $last_order_date = get_last_order_date();
 $tooltips = get_kpi_tooltips();
+$locations = get_brand_locations($id);
 
 // Fetch all data
 $hero = get_hero_metrics_with_trends($id, $date_range);
-$net_revenue = $hero['net_revenue'] ?? 0;
+$net_revenue = $hero['net_revenue_raw'] ?? 0;
 $costs = get_platform_costs($id, $date_range['start'], $date_range['end'], $net_revenue);
 $promos = get_promo_stats($id, $date_range['start'], $date_range['end'], $net_revenue);
 $refund_breakdown = get_refund_breakdown($id, $date_range['start'], $date_range['end']);
@@ -73,11 +79,53 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
 
         <!-- Custom Date Range Form -->
         <div id="customRangeForm" class="custom-range-form" style="display: <?= $range === 'custom' ? 'flex' : 'none' ?>;">
-            <form method="GET" class="date-form">
+            <form method="GET" class="date-form-advanced">
                 <input type="hidden" name="id" value="<?= $id ?>">
                 <input type="hidden" name="range" value="custom">
-                <label>From: <input type="date" name="from" value="<?= h($custom_start ?? $date_range['start']) ?>" max="<?= $last_order_date ?>"></label>
-                <label>To: <input type="date" name="to" value="<?= h($custom_end ?? $date_range['end']) ?>" max="<?= $last_order_date ?>"></label>
+
+                <!-- Period 1 -->
+                <div class="period-section">
+                    <span class="period-label">Period 1:</span>
+                    <label>From: <input type="date" name="from" value="<?= h($custom_start ?? $date_range['start']) ?>" max="<?= $last_order_date ?>" onchange="suggestComparison()"></label>
+                    <label>To: <input type="date" name="to" value="<?= h($custom_end ?? $date_range['end']) ?>" max="<?= $last_order_date ?>" onchange="suggestComparison()"></label>
+                </div>
+
+                <!-- Period 2 (Comparison) -->
+                <div class="period-section">
+                    <span class="period-label">Compare to:</span>
+                    <div class="compare-options">
+                        <label class="compare-option">
+                            <input type="radio" name="compare" value="yoy" <?= $compare_type === 'yoy' ? 'checked' : '' ?> onchange="updateCompareFields()">
+                            YoY
+                        </label>
+                        <label class="compare-option">
+                            <input type="radio" name="compare" value="l4l" <?= $compare_type === 'l4l' ? 'checked' : '' ?> onchange="updateCompareFields()">
+                            L4L
+                        </label>
+                        <label class="compare-option">
+                            <input type="radio" name="compare" value="custom" <?= $compare_type === 'custom' ? 'checked' : '' ?> onchange="updateCompareFields()">
+                            Custom
+                        </label>
+                    </div>
+                    <div id="customCompareFields" style="display: <?= $compare_type === 'custom' ? 'flex' : 'none' ?>; gap: 0.5rem; margin-top: 0.5rem;">
+                        <label>From: <input type="date" name="compare_from" value="<?= h($compare_from ?? $date_range['prev_start']) ?>" max="<?= $last_order_date ?>"></label>
+                        <label>To: <input type="date" name="compare_to" value="<?= h($compare_to ?? $date_range['prev_end']) ?>" max="<?= $last_order_date ?>"></label>
+                    </div>
+                </div>
+
+                <!-- Store Filter -->
+                <?php if (count($locations) > 1): ?>
+                <div class="period-section">
+                    <span class="period-label">Location:</span>
+                    <select name="location" class="location-select">
+                        <option value="0">All Locations</option>
+                        <?php foreach ($locations as $loc): ?>
+                        <option value="<?= $loc['id'] ?>" <?= $location_id === (int)$loc['id'] ? 'selected' : '' ?>><?= h($loc['name']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <?php endif; ?>
+
                 <button type="submit" class="btn btn-primary btn-small">Apply</button>
             </form>
         </div>
@@ -87,10 +135,13 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
             <?php if (!empty($date_range['is_partial'])): ?>
             <span class="partial-warning">Partial period: data until <?= format_date($last_order_date) ?></span>
             <?php endif; ?>
+            <?php if ($location_id > 0): ?>
+            <span class="location-filter-active">Filtered by location</span>
+            <?php endif; ?>
         </div>
 
         <!-- ROW 1: Hero Metrics -->
-        <div class="stats-grid stats-grid-5">
+        <div class="stats-grid stats-grid-6">
             <div class="stat-card">
                 <div class="stat-header">
                     <span class="stat-value"><?= format_money($hero['gross']['value']) ?></span>
@@ -99,6 +150,16 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
                 <div class="stat-trend <?= $hero['gross']['trend']['direction'] ?>">
                     <?= $hero['gross']['trend']['label'] ?>
                     <span class="trend-period"><?= h($hero['gross']['trend']['comparison']) ?></span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-value"><?= format_money($hero['net_revenue']['value']) ?></span>
+                </div>
+                <div class="stat-label">Net Revenue <span class="info-tooltip" data-tooltip="<?= h($tooltips['net_revenue']) ?>">ⓘ</span></div>
+                <div class="stat-trend <?= $hero['net_revenue']['trend']['direction'] ?>">
+                    <?= $hero['net_revenue']['trend']['label'] ?>
+                    <span class="trend-period"><?= h($hero['net_revenue']['trend']['comparison']) ?></span>
                 </div>
             </div>
             <div class="stat-card">
@@ -125,7 +186,7 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
                 <div class="stat-header">
                     <span class="stat-value"><?= format_money($hero['aov']['value']) ?></span>
                 </div>
-                <div class="stat-label">Avg Order Value <span class="info-tooltip" data-tooltip="<?= h($tooltips['aov']) ?>">ⓘ</span></div>
+                <div class="stat-label">AOV <span class="info-tooltip" data-tooltip="<?= h($tooltips['aov']) ?>">ⓘ</span></div>
                 <div class="stat-trend <?= $hero['aov']['trend']['direction'] ?>">
                     <?= $hero['aov']['trend']['label'] ?>
                     <span class="trend-period"><?= h($hero['aov']['trend']['comparison']) ?></span>
@@ -300,12 +361,15 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
                     <div class="growth-trend <?= $growth['yoy']['direction'] ?>"><?= $growth['yoy']['label'] ?></div>
                     <div class="growth-period"><?= h($growth['yoy']['period']) ?></div>
                     <div class="growth-vs">vs <?= h($growth['yoy']['vs_period']) ?></div>
+                    <?php if (!empty($growth['yoy']['partial_data'])): ?>
+                    <div class="growth-warning">⚠️ Limited comparison data</div>
+                    <?php endif; ?>
                 </div>
                 <div class="growth-card">
                     <div class="growth-label">Like for Like (L4L)</div>
                     <div class="growth-trend <?= $growth['l4l']['direction'] ?>"><?= $growth['l4l']['label'] ?></div>
                     <div class="growth-period"><?= h($growth['l4l']['period']) ?></div>
-                    <div class="growth-vs">vs <?= h($growth['l4l']['vs_period']) ?></div>
+                    <div class="growth-vs">vs <?= h($growth['l4l']['vs_period']) ?> (same stores)</div>
                 </div>
             </div>
         </div>
@@ -427,6 +491,30 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
         function toggleCustomRange() {
             const form = document.getElementById('customRangeForm');
             form.style.display = form.style.display === 'none' ? 'flex' : 'none';
+        }
+
+        function updateCompareFields() {
+            const customFields = document.getElementById('customCompareFields');
+            const compareType = document.querySelector('input[name="compare"]:checked')?.value;
+            customFields.style.display = compareType === 'custom' ? 'flex' : 'none';
+        }
+
+        function suggestComparison() {
+            // Smart suggestion: auto-fill YoY comparison dates
+            const fromInput = document.querySelector('input[name="from"]');
+            const toInput = document.querySelector('input[name="to"]');
+            const compareFromInput = document.querySelector('input[name="compare_from"]');
+            const compareToInput = document.querySelector('input[name="compare_to"]');
+
+            if (fromInput.value && toInput.value && compareFromInput && compareToInput) {
+                // Suggest same period last year
+                const from = new Date(fromInput.value);
+                const to = new Date(toInput.value);
+                from.setFullYear(from.getFullYear() - 1);
+                to.setFullYear(to.getFullYear() - 1);
+                compareFromInput.value = from.toISOString().split('T')[0];
+                compareToInput.value = to.toISOString().split('T')[0];
+            }
         }
 
         function updateChart() {

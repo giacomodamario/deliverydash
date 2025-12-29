@@ -121,6 +121,10 @@ h2 {
     margin-bottom: 1.5rem;
 }
 
+.stats-grid-6 {
+    grid-template-columns: repeat(6, 1fr);
+}
+
 .stats-grid-5 {
     grid-template-columns: repeat(5, 1fr);
 }
@@ -727,6 +731,68 @@ code {
     font-size: 0.9rem;
 }
 
+/* Advanced Date Form */
+.date-form-advanced {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 1.5rem;
+}
+
+.period-section {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.period-label {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--gray-700);
+    min-width: 70px;
+}
+
+.compare-options {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.compare-option {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.compare-option:hover {
+    background: var(--gray-100);
+}
+
+.compare-option input[type="radio"] {
+    margin: 0;
+}
+
+.location-select {
+    padding: 0.5rem;
+    border: 1px solid var(--gray-300);
+    border-radius: 4px;
+    font-size: 0.9rem;
+    min-width: 150px;
+}
+
+.location-filter-active {
+    font-size: 0.85rem;
+    color: var(--primary);
+    padding: 0.25rem 0.5rem;
+    background: #dbeafe;
+    border-radius: 4px;
+}
+
 /* Date Info */
 .date-info {
     display: flex;
@@ -807,6 +873,12 @@ code {
 .growth-vs {
     font-size: 0.7rem;
     color: var(--gray-400);
+}
+
+.growth-warning {
+    font-size: 0.7rem;
+    color: var(--warning);
+    margin-top: 0.25rem;
 }
 
 /* Payment Summary */
@@ -917,6 +989,12 @@ code {
     min-width: 90px;
 }
 
+/* Separator before percentage */
+.metric-pct::before {
+    content: '| ';
+    color: var(--gray-300);
+}
+
 /* Fault Badge */
 .fault-badge {
     display: inline-block;
@@ -952,6 +1030,9 @@ code {
     .growth-grid {
         grid-template-columns: repeat(2, 1fr);
     }
+    .stats-grid-6 {
+        grid-template-columns: repeat(3, 1fr);
+    }
     .stats-grid-5 {
         grid-template-columns: repeat(3, 1fr);
     }
@@ -976,6 +1057,7 @@ code {
     }
 
     .stats-grid,
+    .stats-grid-6,
     .stats-grid-5,
     .stats-grid-4 {
         grid-template-columns: repeat(2, 1fr);
