@@ -524,7 +524,7 @@ function get_refund_details(int $brand_id, string $start, string $end, int $page
         SELECT
             o.order_id,
             o.order_date,
-            o.order_time,
+            strftime('%H:%M', o.order_date) as order_time,
             o.gross_value,
             o.refund,
             o.refund_reason,
@@ -533,7 +533,7 @@ function get_refund_details(int $brand_id, string $start, string $end, int $page
         FROM orders o
         JOIN locations l ON o.location_id = l.id
         WHERE $where_clause
-        ORDER BY o.order_date DESC, o.order_time DESC
+        ORDER BY o.order_date DESC
         LIMIT ? OFFSET ?
     ";
     $params[] = $per_page;
@@ -746,7 +746,7 @@ function get_day_patterns(int $brand_id, string $start, string $end): array {
 function get_hourly_heatmap(int $brand_id, string $start, string $end): array {
     $sql = "
         SELECT
-            CAST(strftime('%H', o.order_time) AS INTEGER) as hour,
+            CAST(strftime('%H', o.order_date) AS INTEGER) as hour,
             CAST(strftime('%w', o.order_date) AS INTEGER) as day_of_week,
             COUNT(*) as orders,
             SUM(o.gross_value) as revenue
@@ -754,8 +754,6 @@ function get_hourly_heatmap(int $brand_id, string $start, string $end): array {
         JOIN locations l ON o.location_id = l.id
         WHERE l.brand_id = ?
         AND o.order_date BETWEEN ? AND ?
-        AND o.order_time IS NOT NULL
-        AND o.order_time != ''
         GROUP BY hour, day_of_week
         ORDER BY hour, day_of_week
     ";
