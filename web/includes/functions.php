@@ -147,11 +147,11 @@ function get_date_range(string $range, ?string $custom_start = null, ?string $cu
                 'days' => $days_in_period,
                 'is_partial' => true
             ];
-        case 'l4l': // Like for Like - last 4 weeks vs SAME 4 weeks LAST YEAR
+        case 'l4l': // Like for Like - last 4 weeks vs 52 weeks ago (364 days for weekday alignment)
             $start = (clone $last_date)->modify('-27 days')->format('Y-m-d');
-            // Same period LAST YEAR (not previous 4 weeks)
-            $prev_start = (clone $last_date)->modify('-1 year')->modify('-27 days')->format('Y-m-d');
-            $prev_end = (clone $last_date)->modify('-1 year')->format('Y-m-d');
+            // Use 364 days (52 weeks) to align weekdays, not exactly 1 year
+            $prev_start = (clone $last_date)->modify('-364 days')->modify('-27 days')->format('Y-m-d');
+            $prev_end = (clone $last_date)->modify('-364 days')->format('Y-m-d');
             return [
                 'start' => $start,
                 'end' => $end_date,
@@ -670,7 +670,8 @@ function get_growth_comparisons(int $brand_id): array {
     // Filter metrics by same-store locations only
     $l4l_current = get_hero_metrics($brand_id, $l4l_start, $l4l_end, $same_store_ids);
     $l4l_prev = get_hero_metrics($brand_id, $l4l_start_ly, $l4l_end_ly, $same_store_ids);
-    $l4l = format_trend($l4l_current['gross'], $l4l_prev['gross']);
+    // Use check_data_ratio for L4L to flag extreme changes (likely incomplete comparison data)
+    $l4l = format_trend($l4l_current['gross'], $l4l_prev['gross'], '', true);
     $l4l['period'] = format_date_short($l4l_start) . ' - ' . format_date_short($l4l_end);
     $l4l['vs_period'] = format_date_short($l4l_start_ly) . ' - ' . format_date_short($l4l_end_ly) . ' (LY)';
 

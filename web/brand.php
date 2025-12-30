@@ -37,13 +37,9 @@ $net_revenue = $hero['net_revenue_raw'] ?? 0;
 $costs = get_platform_costs($id, $date_range['start'], $date_range['end'], $net_revenue);
 $promos = get_promo_stats($id, $date_range['start'], $date_range['end'], $net_revenue);
 $refund_breakdown = get_refund_breakdown($id, $date_range['start'], $date_range['end']);
-$refund_page = isset($_GET['refund_page']) ? max(1, (int)$_GET['refund_page']) : 1;
-$refund_filter = $_GET['refund_filter'] ?? null;
-$refund_details = get_refund_details($id, $date_range['start'], $date_range['end'], $refund_page, 10, $refund_filter);
 $breakdown = get_order_breakdown($id, $date_range['start'], $date_range['end']);
 $growth = get_growth_comparisons($id);
 $patterns = get_day_patterns($id, $date_range['start'], $date_range['end']);
-$heatmap = get_hourly_heatmap($id, $date_range['start'], $date_range['end']);
 $daily_data = get_daily_data($id, $date_range['start'], $date_range['end']);
 $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['prev_end']);
 ?>
@@ -335,68 +331,6 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
         </div>
         <?php endif; ?>
 
-        <!-- Refund Details -->
-        <?php if ($refund_details['total'] > 0): ?>
-        <div class="card">
-            <div class="section-header">
-                <h2>Refund Details</h2>
-                <span class="badge"><?= $refund_details['total'] ?> orders</span>
-            </div>
-
-            <!-- Filter Pills -->
-            <?php if (!empty($refund_details['reasons'])): ?>
-            <div class="filter-pills">
-                <a href="?id=<?= $id ?>&range=<?= $range ?>&from=<?= $custom_start ?>&to=<?= $custom_end ?>"
-                   class="pill <?= !$refund_filter ? 'active' : '' ?>">All</a>
-                <?php foreach ($refund_details['reasons'] as $reason): ?>
-                <a href="?id=<?= $id ?>&range=<?= $range ?>&from=<?= $custom_start ?>&to=<?= $custom_end ?>&refund_filter=<?= urlencode($reason) ?>"
-                   class="pill <?= $refund_filter === $reason ? 'active' : '' ?>"><?= h($reason) ?></a>
-                <?php endforeach; ?>
-            </div>
-            <?php endif; ?>
-
-            <!-- Refund Orders Table -->
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Order ID</th>
-                        <th>Date</th>
-                        <th>Time</th>
-                        <th class="text-right">Value</th>
-                        <th class="text-right">Refund</th>
-                        <th>Reason</th>
-                        <th>Fault</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($refund_details['orders'] as $order): ?>
-                    <tr class="refund-row <?= strtolower($order['refund_fault']) ?>">
-                        <td><code><?= h($order['order_id']) ?></code></td>
-                        <td><?= format_date($order['order_date']) ?></td>
-                        <td><?= h($order['order_time'] ?? '-') ?></td>
-                        <td class="text-right"><?= format_money($order['gross_value']) ?></td>
-                        <td class="text-right danger"><?= format_money($order['refund']) ?></td>
-                        <td><?= h($order['refund_reason'] ?? '-') ?></td>
-                        <td><span class="fault-badge <?= strtolower($order['refund_fault']) ?>"><?= h($order['refund_fault']) ?></span></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-
-            <!-- Pagination -->
-            <?php if ($refund_details['total_pages'] > 1): ?>
-            <div class="pagination">
-                <?php if ($refund_page > 1): ?>
-                <a href="?id=<?= $id ?>&range=<?= $range ?>&from=<?= $custom_start ?>&to=<?= $custom_end ?>&refund_filter=<?= urlencode($refund_filter ?? '') ?>&refund_page=<?= $refund_page - 1 ?>" class="btn btn-small">← Prev</a>
-                <?php endif; ?>
-                <span class="page-info">Page <?= $refund_page ?> of <?= $refund_details['total_pages'] ?></span>
-                <?php if ($refund_page < $refund_details['total_pages']): ?>
-                <a href="?id=<?= $id ?>&range=<?= $range ?>&from=<?= $custom_start ?>&to=<?= $custom_end ?>&refund_filter=<?= urlencode($refund_filter ?? '') ?>&refund_page=<?= $refund_page + 1 ?>" class="btn btn-small">Next →</a>
-                <?php endif; ?>
-            </div>
-            <?php endif; ?>
-        </div>
-        <?php endif; ?>
 
         <!-- ROW 3: Growth Comparisons -->
         <div class="card">
@@ -428,6 +362,9 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
                     <div class="growth-trend <?= $growth['l4l']['direction'] ?>"><?= $growth['l4l']['label'] ?></div>
                     <div class="growth-period"><?= h($growth['l4l']['period']) ?></div>
                     <div class="growth-vs">vs <?= h($growth['l4l']['vs_period']) ?> (same stores)</div>
+                    <?php if (!empty($growth['l4l']['partial_data'])): ?>
+                    <div class="growth-warning">⚠️ Limited comparison data</div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -470,89 +407,6 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
                 <?php endif; ?>
             </div>
 
-            <div class="card">
-                <h2>Hourly Performance</h2>
-                <?php if ($heatmap['max_orders'] > 0): ?>
-                <!-- Summary Stats -->
-                <div class="heatmap-stats">
-                    <div class="heatmap-stat">
-                        <span class="stat-label">Peak Hour</span>
-                        <span class="stat-value-small"><?= $heatmap['peak_hour'] ?></span>
-                    </div>
-                    <div class="heatmap-stat">
-                        <span class="stat-label">Busiest Day</span>
-                        <span class="stat-value-small"><?= $heatmap['busiest_day'] ?></span>
-                    </div>
-                    <div class="heatmap-stat">
-                        <span class="stat-label">Slowest Hour</span>
-                        <span class="stat-value-small"><?= $heatmap['slowest_hour'] ?></span>
-                    </div>
-                    <div class="heatmap-stat">
-                        <span class="stat-label">Slowest Day</span>
-                        <span class="stat-value-small"><?= $heatmap['slowest_day'] ?></span>
-                    </div>
-                </div>
-
-                <!-- Heatmap Grid -->
-                <div class="heatmap-container">
-                    <div class="heatmap-toggle">
-                        <button class="btn btn-small active" onclick="toggleHeatmap('orders')">Orders</button>
-                        <button class="btn btn-small" onclick="toggleHeatmap('revenue')">Revenue</button>
-                    </div>
-                    <div class="heatmap-grid" id="heatmapGrid">
-                        <div class="heatmap-header">
-                            <div class="heatmap-corner"></div>
-                            <?php
-                            // Reorder days starting from Monday
-                            $day_order = [1, 2, 3, 4, 5, 6, 0];
-                            foreach ($day_order as $d):
-                            ?>
-                            <div class="heatmap-day"><?= $heatmap['day_names'][$d] ?></div>
-                            <?php endforeach; ?>
-                        </div>
-                        <?php
-                        // Only show hours with data (typically 10-23)
-                        $active_hours = [];
-                        foreach ($heatmap['matrix'] as $h => $days) {
-                            $has_data = false;
-                            foreach ($days as $d => $data) {
-                                if ($data['orders'] > 0) $has_data = true;
-                            }
-                            if ($has_data) $active_hours[] = $h;
-                        }
-                        if (empty($active_hours)) $active_hours = range(10, 22);
-                        $min_hour = min($active_hours);
-                        $max_hour = max($active_hours);
-
-                        for ($h = $min_hour; $h <= $max_hour; $h++):
-                        ?>
-                        <div class="heatmap-row">
-                            <div class="heatmap-hour"><?= sprintf('%02d', $h) ?></div>
-                            <?php foreach ($day_order as $d):
-                                $cell = $heatmap['matrix'][$h][$d];
-                                $intensity = $heatmap['max_orders'] > 0 ? $cell['orders'] / $heatmap['max_orders'] : 0;
-                            ?>
-                            <div class="heatmap-cell"
-                                 data-orders="<?= $cell['orders'] ?>"
-                                 data-revenue="<?= number_format($cell['revenue'], 2) ?>"
-                                 style="background: rgba(59, 130, 246, <?= $intensity ?>);"
-                                 title="<?= $cell['orders'] ?> orders, <?= format_money($cell['revenue']) ?>">
-                                <span class="cell-value"><?= $cell['orders'] > 0 ? $cell['orders'] : '' ?></span>
-                            </div>
-                            <?php endforeach; ?>
-                        </div>
-                        <?php endfor; ?>
-                    </div>
-                    <div class="heatmap-legend">
-                        <span>Low</span>
-                        <div class="legend-gradient"></div>
-                        <span>High</span>
-                    </div>
-                </div>
-                <?php else: ?>
-                <p class="empty">No hourly data for this period</p>
-                <?php endif; ?>
-            </div>
         </div>
 
         <!-- ROW 5: Performance Trend Chart -->
@@ -610,41 +464,6 @@ $daily_data_prev = get_daily_data($id, $date_range['prev_start'], $date_range['p
                 to.setFullYear(to.getFullYear() - 1);
                 compareFromInput.value = from.toISOString().split('T')[0];
                 compareToInput.value = to.toISOString().split('T')[0];
-            }
-        }
-
-        const heatmapMaxRevenue = <?= $heatmap['max_revenue'] ?? 0 ?>;
-
-        function toggleHeatmap(mode) {
-            const cells = document.querySelectorAll('.heatmap-cell');
-            const buttons = document.querySelectorAll('.heatmap-toggle .btn');
-
-            buttons.forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
-
-            cells.forEach(cell => {
-                const orders = parseInt(cell.dataset.orders) || 0;
-                const revenue = parseFloat(cell.dataset.revenue) || 0;
-                const valueSpan = cell.querySelector('.cell-value');
-
-                if (mode === 'orders') {
-                    const maxOrders = <?= $heatmap['max_orders'] ?? 1 ?>;
-                    const intensity = maxOrders > 0 ? orders / maxOrders : 0;
-                    cell.style.background = `rgba(59, 130, 246, ${intensity})`;
-                    valueSpan.textContent = orders > 0 ? orders : '';
-                } else {
-                    const intensity = heatmapMaxRevenue > 0 ? revenue / heatmapMaxRevenue : 0;
-                    cell.style.background = `rgba(16, 185, 129, ${intensity})`;
-                    valueSpan.textContent = revenue > 0 ? Math.round(revenue) + '€' : '';
-                }
-            });
-
-            // Update legend gradient color
-            const legend = document.querySelector('.legend-gradient');
-            if (mode === 'orders') {
-                legend.style.background = 'linear-gradient(to right, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 1))';
-            } else {
-                legend.style.background = 'linear-gradient(to right, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 1))';
             }
         }
 
