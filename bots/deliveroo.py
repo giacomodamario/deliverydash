@@ -390,13 +390,10 @@ class DeliverooBot(BaseBot):
             filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
             save_path = self.downloads_dir / filename
 
-            # Handle duplicate filenames
-            counter = 1
-            while save_path.exists():
-                base = filename.rsplit('.', 1)[0]
-                filename = f"{base}_{counter}.csv"
-                save_path = self.downloads_dir / filename
-                counter += 1
+            # Skip if already downloaded
+            if save_path.exists():
+                self.logger.info(f"Skipping (already exists): {filename}")
+                return None
 
             download.save_as(str(save_path))
             self.logger.info(f"Downloaded: {save_path.name}")
