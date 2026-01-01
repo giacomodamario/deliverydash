@@ -390,11 +390,6 @@ class DeliverooBot(BaseBot):
             filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
             save_path = self.downloads_dir / filename
 
-            # Skip if already downloaded
-            if save_path.exists():
-                self.logger.info(f"Skipping (already exists): {filename}")
-                return None
-
             download.save_as(str(save_path))
             self.logger.info(f"Downloaded: {save_path.name}")
 
@@ -405,6 +400,21 @@ class DeliverooBot(BaseBot):
             self.logger.warning(f"Download timeout for CSV #{index+1}")
         except Exception as e:
             self.logger.error(f"Error downloading CSV #{index+1}: {e}")
+
+        return None
+
+    def _is_invoice_downloaded(self, invoice_number: str) -> Optional[str]:
+        """Check if an invoice with this number is already downloaded.
+
+        Returns the filename if found, None otherwise.
+        """
+        if not invoice_number:
+            return None
+
+        # Check if any file in downloads_dir contains the invoice number
+        for file_path in self.downloads_dir.glob("*.csv"):
+            if invoice_number in file_path.name:
+                return file_path.name
 
         return None
 
@@ -476,6 +486,14 @@ class DeliverooBot(BaseBot):
             for index, csv_link in enumerate(csv_links):
                 # Extract invoice info for this link
                 invoice_info = self._extract_invoice_info_from_link(csv_link)
+
+                # Skip if already downloaded
+                invoice_number = invoice_info.get("invoice_number")
+                existing_file = self._is_invoice_downloaded(invoice_number)
+                if existing_file:
+                    self.logger.info(f"Skipping #{index+1}: {existing_file} (already exists)")
+                    continue
+
                 file_path = self._download_csv(csv_link, index)
 
                 if file_path:
