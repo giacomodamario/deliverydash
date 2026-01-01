@@ -403,18 +403,34 @@ class DeliverooBot(BaseBot):
 
         return None
 
-    def _is_invoice_downloaded(self, invoice_number: str) -> Optional[str]:
-        """Check if an invoice with this number is already downloaded.
+    def _is_invoice_downloaded(self, invoice_info: dict) -> Optional[str]:
+        """Check if an invoice is already downloaded by matching date in filename.
 
+        Filenames are like: ROSTICCERIA_PALAZZI_SRL_20240311_statement.csv
         Returns the filename if found, None otherwise.
         """
-        if not invoice_number:
+        period = invoice_info.get("period")
+        if not period:
             return None
 
-        # Check if any file in downloads_dir contains the invoice number
-        for file_path in self.downloads_dir.glob("*.csv"):
-            if invoice_number in file_path.name:
+        # Convert period (e.g. "11/03/2024") to YYYYMMDD format
+        try:
+            for fmt in ["%d/%m/%Y", "%d-%m-%Y", "%d %B %Y"]:
+                try:
+                    date_obj = datetime.strptime(period, fmt)
+                    date_str = date_obj.strftime("%Y%m%d")
+                    break
+                except ValueError:
+                    continue
+            else:
+                return None  # Could not parse date
+
+            # Check if any file in downloads_dir contains that date
+            for file_path in self.downloads_dir.glob(f"*{date_str}*.csv"):
                 return file_path.name
+
+        except Exception:
+            pass
 
         return None
 
@@ -487,9 +503,8 @@ class DeliverooBot(BaseBot):
                 # Extract invoice info for this link
                 invoice_info = self._extract_invoice_info_from_link(csv_link)
 
-                # Skip if already downloaded
-                invoice_number = invoice_info.get("invoice_number")
-                existing_file = self._is_invoice_downloaded(invoice_number)
+                # Skip if already downloaded (match by date in filename)
+                existing_file = self._is_invoice_downloaded(invoice_info)
                 if existing_file:
                     self.logger.info(f"Skipping #{index+1}: {existing_file} (already exists)")
                     continue
