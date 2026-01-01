@@ -466,8 +466,14 @@ class DeliverooBot(BaseBot):
         location_id: str = None,
         start_date: datetime = None,
         end_date: datetime = None,
+        max_invoices: int = 5,
     ) -> List[DownloadedInvoice]:
-        """Download all invoices (CSV from Statement column)."""
+        """Download invoices (CSV from Statement column).
+
+        Args:
+            max_invoices: Max invoices to check (default 5, newest first).
+                         Use higher value for initial full sync.
+        """
         downloaded_invoices = []
 
         # Navigate to invoices section
@@ -477,78 +483,73 @@ class DeliverooBot(BaseBot):
         # Dismiss any popups (including NPS survey)
         self._dismiss_popups()
 
-        # Process all pages
-        page_num = 1
+        # Process first page only (newest invoices)
+        self.logger.info("Processing invoices (newest first)...")
+        self.screenshot("04_invoice_page")
+
+        # Dismiss popups before processing
+        self._dismiss_popups()
+
+        # Find all CSV links on this page
+        csv_links = self._get_all_csv_links()
+
+        if not csv_links:
+            self.logger.warning("No CSV links found on this page")
+            self.screenshot("05_no_csv_links_found")
+            return []
+
+        # Only check first max_invoices (newest)
+        csv_links = csv_links[:max_invoices]
+        self.logger.info(f"Checking {len(csv_links)} newest invoices...")
+
         total_downloaded = 0
+        consecutive_skips = 0
 
-        while True:
-            self.logger.info(f"Processing invoice page {page_num}...")
-            self.screenshot(f"04_invoice_page_{page_num}")
+        for index, csv_link in enumerate(csv_links):
+            # Extract invoice info for this link
+            invoice_info = self._extract_invoice_info_from_link(csv_link)
 
-            # Dismiss popups before processing
-            self._dismiss_popups()
+            # Skip if already downloaded (match by date in filename)
+            existing_file = self._is_invoice_downloaded(invoice_info)
+            if existing_file:
+                self.logger.info(f"Skipping #{index+1}: {existing_file} (already exists)")
+                consecutive_skips += 1
+                # Stop early if 3 consecutive skips (all recent ones exist)
+                if consecutive_skips >= 3:
+                    self.logger.info("3 consecutive skips - all recent invoices exist")
+                    break
+                continue
 
-            # Find all CSV links on this page
-            csv_links = self._get_all_csv_links()
+            consecutive_skips = 0  # Reset on successful download
+            file_path = self._download_csv(csv_link, index)
 
-            if not csv_links:
-                self.logger.warning("No CSV links found on this page")
-                # Take a debug screenshot
-                self.screenshot("05_no_csv_links_found")
-                break
+            if file_path:
+                total_downloaded += 1
 
-            self.logger.info(f"Found {len(csv_links)} CSV links to download")
+                # Parse date for the record
+                invoice_date = datetime.now()
+                if invoice_info.get("period"):
+                    try:
+                        for fmt in ["%d/%m/%Y", "%d %B %Y", "%d-%m-%Y"]:
+                            try:
+                                invoice_date = datetime.strptime(invoice_info["period"], fmt)
+                                break
+                            except ValueError:
+                                continue
+                    except Exception:
+                        pass
 
-            for index, csv_link in enumerate(csv_links):
-                # Extract invoice info for this link
-                invoice_info = self._extract_invoice_info_from_link(csv_link)
+                downloaded_invoices.append(DownloadedInvoice(
+                    platform=self.PLATFORM_NAME,
+                    brand="Deliveroo",
+                    location=location_id or "default",
+                    invoice_id=invoice_info.get("invoice_number") or file_path.stem,
+                    invoice_date=invoice_date,
+                    file_path=file_path,
+                    file_type="csv",
+                ))
 
-                # Skip if already downloaded (match by date in filename)
-                existing_file = self._is_invoice_downloaded(invoice_info)
-                if existing_file:
-                    self.logger.info(f"Skipping #{index+1}: {existing_file} (already exists)")
-                    continue
-
-                file_path = self._download_csv(csv_link, index)
-
-                if file_path:
-                    total_downloaded += 1
-
-                    # Parse date for the record
-                    invoice_date = datetime.now()
-                    if invoice_info.get("period"):
-                        try:
-                            # Try various date formats
-                            for fmt in ["%d/%m/%Y", "%d %B %Y", "%d-%m-%Y"]:
-                                try:
-                                    invoice_date = datetime.strptime(invoice_info["period"], fmt)
-                                    break
-                                except ValueError:
-                                    continue
-                        except Exception:
-                            pass
-
-                    downloaded_invoices.append(DownloadedInvoice(
-                        platform=self.PLATFORM_NAME,
-                        brand="Deliveroo",
-                        location=location_id or "default",
-                        invoice_id=invoice_info.get("invoice_number") or file_path.stem,
-                        invoice_date=invoice_date,
-                        file_path=file_path,
-                        file_type="csv",
-                    ))
-
-            # Check for more pages
-            if self._has_next_page():
-                self._go_to_next_page()
-                page_num += 1
-                # Dismiss popups on new page
-                self._dismiss_popups()
-            else:
-                self.logger.info("No more pages")
-                break
-
-        self.logger.info(f"Downloaded {total_downloaded} invoice CSV files")
+        self.logger.info(f"Downloaded {total_downloaded} new invoice(s)")
         return downloaded_invoices
 
 
