@@ -1,49 +1,93 @@
 # Glovo Bot - Tasks & Progress
 
-## Session 2026-01-13 (Evening) - API-First Solution Implemented
+## Session 2026-01-14 - WORKING
+
+### Current Status: OPERATIONAL
+- **Session:** VALID (auto-refreshed via cron)
+- **Stores:** 72 (Poke House + Greenbowls)
+- **Last sync:** 11,325 orders downloaded successfully
+- **Token expiry:** ~4 hours (auto-refreshed every 2 hours)
+
+### How It Works Now
+```
+Manual Login (once via VNC) → Browser Bot Syncs → Cron Keep-Alive (every 2h)
+```
+
+The **browser-based bot** works when session is fresh (no captcha). The **direct API** is blocked by PerimeterX (403).
+
+### Running a Sync
+```bash
+cd /root/deliverydash
+DISPLAY=:1 ./venv/bin/python run_platform.py glovo
+```
+
+Or directly:
+```bash
+DISPLAY=:1 ./venv/bin/python -c "
+from bots.glovo import GlovoBot
+from datetime import datetime, timedelta
+
+with GlovoBot(email='x', password='x', headless=False) as bot:
+    if bot.login():
+        invoices = bot.download_invoices(
+            start_date=datetime.now() - timedelta(days=7),
+            end_date=datetime.now(),
+        )
+        print(f'Downloaded {len(invoices)} invoice(s)')
+"
+```
+
+### Automatic Session Keep-Alive
+A cron job runs every 2 hours to keep the session alive:
+
+| File | Purpose |
+|------|---------|
+| `glovo_keepalive.py` | Visits portal to refresh tokens |
+| `cron_glovo_keepalive.sh` | Wrapper script for cron |
+| `logs/keepalive.log` | Keep-alive execution logs |
+
+**Cron schedule:** `0 */2 * * *` (every 2 hours at :00)
+
+**Check logs:**
+```bash
+tail -f /root/deliverydash/logs/keepalive.log
+```
+
+**Remove cron job:**
+```bash
+crontab -l | grep -v glovo_keepalive | crontab -
+```
+
+### If Session Expires
+If the server was down or cron failed, manual re-login is needed:
+```bash
+cd /root/deliverydash
+DISPLAY=:1 ./venv/bin/python glovo_manual_login.py
+# Complete login manually in browser (captcha + 2FA)
+# Press ENTER when done
+```
+
+---
+
+## Session 2026-01-13 (Evening) - API-First Solution (Partial)
 
 ### Problem
-PerimeterX "press & hold" captcha cannot be bypassed programmatically. All automation attempts (mouse, touch, CDP, xdotool) are detected.
+PerimeterX "press & hold" captcha cannot be bypassed programmatically.
 
-### Solution Implemented: Direct API Access
-Instead of fighting the captcha, bypass browser navigation entirely using direct GraphQL API calls with tokens from manual authentication.
+### Solution Attempted: Direct API Access
+Created API client to bypass browser, but GraphQL endpoint still returns 403 Forbidden.
 
-### New Files Created
+### Files Created
 | File | Purpose |
 |------|---------|
 | `bots/glovo_session.py` | Session/token management - loads, validates, decodes JWT tokens |
-| `bots/glovo_api.py` | Direct API client - GraphQL/REST calls with auth headers |
+| `bots/glovo_api.py` | Direct API client - blocked by PerimeterX |
+| `glovo_keepalive.py` | **NEW** - Keep-alive script for cron |
+| `cron_glovo_keepalive.sh` | **NEW** - Cron wrapper |
 
-### Files Modified
-| File | Changes |
-|------|---------|
-| `requirements.txt` | Added `requests`, `PyJWT` |
-| `bots/__init__.py` | Exports `GlovoSessionManager`, `GlovoAPIClient`, `GlovoSyncService` |
-| `glovo_manual_login.py` | Added API verification after login |
-| `sync.py` | Added `run_glovo_sync_api()` - uses direct API instead of browser |
-| `notifications.py` | Added `send_reauth_needed()` for session expiry alerts |
-
-### How It Works
-```
-Manual Login (once) → Save Session → API Sync (no captcha) → Auto-refresh tokens
-```
-
-1. User runs `python glovo_manual_login.py` on machine with display
-2. Manually completes login (captcha + 2FA) in browser
-3. Session tokens saved to `data/sessions/glovo_session.json`
-4. Subsequent syncs use `GlovoAPIClient` for direct API calls
-5. Tokens auto-refresh before expiry (target: every 1-2 weeks manual re-auth)
-
-### Current Session Status
-- **Session:** EXPIRED (token expired ~1 hour ago)
-- **Stores:** 72 cached from session
-- **Action needed:** Run `python glovo_manual_login.py` to create fresh session
-
-### Next Steps
-1. Create fresh session via manual login
-2. Test API connectivity with valid tokens
-3. Discover exact GraphQL query structure via browser network inspection
-4. Fine-tune token refresh mechanism based on actual refresh token lifetime
+### API Status
+- **Direct API:** BLOCKED (PerimeterX 403 on GraphQL endpoint)
+- **Browser bot:** WORKING (with fresh session)
 
 ---
 
@@ -129,71 +173,24 @@ The "Tieni premuto" press & hold challenge is a sophisticated anti-bot verificat
 
 ---
 
-## Pending Issues
+## Resolved Issues
 
-### Issue: "Tieni premuto" Button Not Found
-**Problem:** The press & hold button is a `<P>` element styled as a button, not an actual `<button>` element.
+### ✅ "Tieni premuto" Captcha
+**Solution:** Use browser-based bot with manual login session. Captcha only appears on fresh logins, not when using saved session.
 
-**Current State:**
-- Modal detected: ✅
-- Button selector finds: ❌ (looking for `<button>`, but it's a `<P>`)
-
-**Debug Info:**
-```
-Element: <P> class='MuiTypography-root MuiTypography-paragraph-400 muiltr-buxgir'
-Parent: <DIV> class='MuiDialogContent-root muiltr-12z3bcr'
-Box: {'x': 803, 'y': 537, 'width': 314, 'height': 48}
-```
-
-**Fix Needed:**
-Update `_handle_press_and_hold()` in `/root/delivery-analytics/bots/glovo.py` to:
-1. Look for `p:has-text("Tieni premuto")` or `*:text-is("Tieni premuto")`
-2. Or find parent div and use that as click target
-3. The bounding box is at x=803, y=537, w=314, h=48
-
-### Issue: Order History Navigation Timeout
-**Problem:** The sidebar link clicks timeout after 60 seconds each before falling back to direct URL.
-
-**Logs:**
-```
-Found Order History link: Storico degli ordini (IT)  [then 60s timeout]
-Found Order History link: orders href                 [then 60s timeout]
-Found Order History link: Ordini nav                  [then 60s timeout]
-Trying direct URL: https://portal.glovoapp.com/dashboard/order-history
-```
-
-**Investigation Needed:**
-- Why do link clicks timeout?
-- Is the page navigation failing silently?
+### ✅ Session Expiry
+**Solution:** Cron job runs `glovo_keepalive.py` every 2 hours to refresh the session automatically.
 
 ---
 
-## Next Session Tasks
+## Future Improvements (Optional)
 
-### Priority 1: Create Fresh Session
-```bash
-cd /root/delivery-analytics
-source venv/bin/activate
-python glovo_manual_login.py
-# Complete login manually in browser (captcha + 2FA)
-```
-
-### Priority 2: Discover GraphQL Schema
-With valid session, capture actual GraphQL queries:
+### Discover GraphQL Schema
+To enable direct API access (faster, no browser needed):
 1. Open Glovo portal in browser with DevTools Network tab
-2. Navigate to Order History
-3. Copy queries to `vagw-api.eu.prd.portal.restaurant/query`
-4. Update `GlovoAPIClient.get_orders()` with actual query structure
-
-### Priority 3: Test Full API Sync
-```bash
-python run_platform.py glovo
-# Should use API client (no browser, no captcha)
-```
-
-### Priority 4: Monitor Token Lifetime
-- Track how long refresh token stays valid
-- Adjust re-auth notification timing accordingly
+2. Navigate to Order History, capture GraphQL queries
+3. Update `GlovoAPIClient.get_orders()` with actual query structure
+4. Find way to bypass PerimeterX on API endpoint
 
 ---
 
@@ -201,12 +198,14 @@ python run_platform.py glovo
 
 | File | Purpose |
 |------|---------|
-| `bots/glovo_api.py` | **NEW** - Direct API client (GraphQL/REST) |
-| `bots/glovo_session.py` | **NEW** - Session/token management |
-| `bots/glovo.py` | Browser-based bot (legacy, may hit captcha) |
+| `bots/glovo.py` | Browser-based bot - **PRIMARY** (works with fresh session) |
+| `bots/glovo_session.py` | Session/token management |
+| `bots/glovo_api.py` | Direct API client (blocked by PerimeterX) |
 | `glovo_manual_login.py` | Manual login script for session bootstrap |
-| `sync.py` | Sync orchestration (now uses API by default) |
+| `glovo_keepalive.py` | Keep-alive script (cron runs every 2h) |
+| `cron_glovo_keepalive.sh` | Cron wrapper script |
 | `data/sessions/glovo_session.json` | Saved session tokens |
+| `logs/keepalive.log` | Keep-alive execution logs |
 
 ---
 
@@ -215,9 +214,12 @@ python run_platform.py glovo
 - **User:** giovanni.gasparini@pokehouse.it
 - **Locations:** 72 (Poke House + Greenbowls)
 - **Platform:** GV_IT (Glovo Italy)
-- **Session File:** `/root/delivery-analytics/data/sessions/glovo_session.json`
+- **Session File:** `/root/deliverydash/data/sessions/glovo_session.json`
 
-**To get new session:** Use browser, login manually, export storage state to JSON.
+**To get new session:**
+```bash
+DISPLAY=:1 ./venv/bin/python glovo_manual_login.py
+```
 
 ---
 

@@ -29,9 +29,14 @@ wheels/
 # Downloads and data
 downloads/
 data/
+data/sessions/
 *.csv
 *.xlsx
 *.pdf
+
+# Logs
+logs/
+*.log
 
 # IDE
 .idea/

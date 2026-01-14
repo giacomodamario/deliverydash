@@ -172,7 +172,10 @@ class BaseBot(ABC):
         return False
 
     def screenshot(self, name: str = "screenshot"):
-        """Take a screenshot for debugging."""
+        """Take a screenshot for debugging (only if debug_screenshots enabled)."""
+        if not settings.debug_screenshots:
+            self.logger.debug(f"Screenshot skipped (debug_screenshots=False): {name}")
+            return None
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         path = self.downloads_dir / f"{name}_{timestamp}.png"
         self.page.screenshot(path=str(path))

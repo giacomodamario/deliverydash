@@ -424,590 +424,33 @@ class GlovoBot(BaseBot):
 
     def _handle_press_and_hold(self) -> bool:
         """
-        Handle Glovo's 'Press & hold' human verification.
-        Returns True if handled or not present, False if failed.
+        Check for PerimeterX 'Press & hold' captcha.
+
+        This captcha cannot be bypassed programmatically - it detects all
+        automation attempts. If detected, manual re-login is required.
+
+        Returns True if no captcha present, False if captcha blocks us.
         """
-        # Check for the press & hold modal (multiple languages + raw translation keys)
-        modal_indicators = [
+        captcha_indicators = [
+            '#px-captcha',
             '*:has-text("Press and hold")',
-            '*:has-text("Before we continue")',
-            '*:has-text("Prima di continuare")',  # Italian
-            '*:has-text("Tieni premuto")',        # Italian button text
-            '*:has-text("Antes de continuar")',   # Spanish
-            'button:has-text("Press & hold")',
-            'button:has-text("Tieni premuto")',   # Italian
-            # Raw translation keys (when localization fails)
+            '*:has-text("Prima di continuare")',
+            '*:has-text("Tieni premuto")',
             '*:has-text("global.captcha.perimeterx")',
-            '*:has-text("captcha.perimeterx")',
-            '#px-captcha',  # PerimeterX captcha container
         ]
 
-        is_challenge = False
-        for indicator in modal_indicators:
+        for indicator in captcha_indicators:
             try:
-                element = self.page.locator(indicator).first
-                if element.is_visible(timeout=2000):
-                    is_challenge = True
-                    break
+                if self.page.locator(indicator).first.is_visible(timeout=2000):
+                    self.logger.error(
+                        "PerimeterX captcha detected. Cannot bypass automatically. "
+                        "Run manual login: DISPLAY=:1 ./venv/bin/python glovo_manual_login.py"
+                    )
+                    return False
             except Exception:
                 continue
 
-        if not is_challenge:
-            return True  # No challenge present
-
-        self.logger.info("'Press & hold' human verification detected, attempting to solve...")
-
-        # Wait for the button to fully render (it may load asynchronously)
-        # The button sometimes appears grey initially then becomes green with text
-        self.logger.info("Waiting for hold button to render...")
-        human_sleep(3.0, 0.5)  # Increased wait time for button to fully render
-
-        try:
-            # Find the press & hold button
-            # The button text is EXACTLY "Tieni premuto" (IT) / "Press & hold" (EN)
-            # NOT the instruction text "Tieni premuto per confermare che sei un essere umano"
-            btn_selectors = [
-                # EXACT text match for the button (NOT the instruction paragraph)
-                # The button only has "Tieni premuto" text, the paragraph has longer text
-                '[role="dialog"] button:text-is("Tieni premuto")',
-                '[role="dialog"] button:text-is("Press & hold")',
-                '[role="dialog"] button:text-is("Press & Hold")',
-                '.MuiDialogContent-root button:text-is("Tieni premuto")',
-                '.MuiDialogContent-root button:text-is("Press & hold")',
-                # Button containing text (but shorter than instruction paragraph)
-                '[role="dialog"] button:has-text("Tieni premuto"):not(:has-text("confermare"))',
-                '[role="dialog"] button:has-text("Press & hold"):not(:has-text("confirm"))',
-                # Generic button selectors excluding close button
-                '.MuiDialogContent-root button:not(:has-text("Chiudi")):not(:has-text("Close"))',
-                '[role="dialog"] button:not(:has-text("Chiudi")):not(:has-text("Close"))',
-            ]
-
-            found_btn = None
-            for selector in btn_selectors:
-                try:
-                    locator = self.page.locator(selector).first
-                    if locator.is_visible(timeout=1500):
-                        btn_text = locator.text_content() or ""
-                        # Make sure we don't get the "Chiudi" (close) button
-                        if "chiudi" not in btn_text.lower() and "close" not in btn_text.lower():
-                            self.logger.info(f"Found press & hold button: {selector} (text: {btn_text})")
-                            found_btn = locator
-                            break
-                except Exception:
-                    continue
-
-            # If still not found, search ALL element types with the text
-            # The hold button might be a div, span, or custom element - not necessarily a <button>
-            if not found_btn:
-                self.logger.info("Searching all element types for hold button text...")
-                try:
-                    # Find any element with exact text "Tieni premuto" or translation keys
-                    hold_texts = [
-                        'Tieni premuto', 'Press & hold', 'Press & Hold', 'Press and hold',
-                        'global.captcha.perimeterx.button',  # Raw translation key
-                    ]
-                    for hold_text in hold_texts:
-                        try:
-                            elem = self.page.locator(f'[role="dialog"] *:text-is("{hold_text}")').first
-                            if elem.is_visible(timeout=1000):
-                                tag = elem.evaluate("el => el.tagName")
-                                self.logger.info(f"Found hold element: <{tag}> with text '{hold_text}'")
-                                found_btn = elem
-                                break
-                        except Exception:
-                            continue
-                except Exception as e:
-                    self.logger.warning(f"Element search failed: {e}")
-
-            # Try broader search - MuiDialog class instead of role="dialog"
-            if not found_btn:
-                self.logger.info("Searching MuiDialog for hold button...")
-                try:
-                    # Search in MUI dialog components
-                    all_elements = self.page.locator('.MuiDialog-root *:visible, .MuiDialog-container *:visible').all()
-                    self.logger.info(f"Found {len(all_elements)} elements in MuiDialog")
-                    for elem in all_elements[:40]:  # Check first 40 elements
-                        try:
-                            text = (elem.text_content() or "").strip()
-                            tag = elem.evaluate("el => el.tagName")
-                            cls = elem.evaluate("el => el.className") or ""
-                            # Log elements with short text or button classes
-                            if (len(text) < 100 and text) or 'button' in cls.lower():
-                                self.logger.info(f"  <{tag}> class='{cls[:50]}' text='{text[:40]}'")
-                            # Look for exact match or button-like elements
-                            if text.lower() in ['tieni premuto', 'press & hold', 'press and hold', 'mantener presionado', 'global.captcha.perimeterx.button']:
-                                box = elem.bounding_box()
-                                self.logger.info(f"Found element <{tag}> with exact text '{text}', box: {box}")
-                                if box and box.get('width', 0) > 50 and box.get('height', 0) > 30:
-                                    found_btn = elem
-                                    break
-                        except Exception:
-                            continue
-                except Exception as e:
-                    self.logger.warning(f"MuiDialog search failed: {e}")
-
-            # Try searching the entire page for elements with specific text
-            if not found_btn:
-                self.logger.info("Searching entire page for hold button text...")
-                try:
-                    # Direct locator for exact text anywhere on page
-                    hold_elem = self.page.get_by_text("Tieni premuto", exact=True)
-                    if hold_elem.is_visible(timeout=2000):
-                        tag = hold_elem.evaluate("el => el.tagName")
-                        box = hold_elem.bounding_box()
-                        self.logger.info(f"Found by get_by_text: <{tag}> box={box}")
-                        if box and box.get('width', 0) > 50:
-                            found_btn = hold_elem
-                except Exception as e:
-                    self.logger.info(f"get_by_text search failed: {e}")
-
-            # Fallback: Find the button area by looking for PerimeterX captcha container
-            if not found_btn:
-                self.logger.info("Looking for button area by position/size...")
-                try:
-                    # Try to find by px-captcha container first (works with translation keys)
-                    px_captcha = self.page.locator('#px-captcha').first
-                    px_box = px_captcha.bounding_box(timeout=3000)
-
-                    if px_box:
-                        # Click in the center of the px-captcha container
-                        btn_x = px_box['x'] + px_box['width'] / 2
-                        btn_y = px_box['y'] + px_box['height'] / 2
-                        self.logger.info(f"Using px-captcha position: x={btn_x}, y={btn_y}")
-                        self.logger.info(f"px-captcha box: {px_box}")
-                        found_btn = {"x": btn_x, "y": btn_y, "calculated": True}
-                    else:
-                        # Fallback to paragraph + close button positioning
-                        para_selectors = [
-                            'p:has-text("Tieni premuto per confermare")',
-                            '*:has-text("global.captcha.perimeterx.description")',
-                            '.MuiDialogContent-root span',
-                        ]
-                        para_box = None
-                        for sel in para_selectors:
-                            try:
-                                para = self.page.locator(sel).first
-                                para_box = para.bounding_box(timeout=2000)
-                                if para_box:
-                                    break
-                            except Exception:
-                                continue
-
-                        # Find the close button position
-                        chiudi_selectors = [
-                            'button:has-text("Chiudi")',
-                            'button:has-text("Close")',
-                            'button:has-text("global.captcha.perimeterx.close")',
-                        ]
-                        chiudi_box = None
-                        for sel in chiudi_selectors:
-                            try:
-                                chiudi = self.page.locator(sel).first
-                                chiudi_box = chiudi.bounding_box(timeout=2000)
-                                if chiudi_box:
-                                    break
-                            except Exception:
-                                continue
-
-                        if para_box and chiudi_box:
-                            btn_y = (para_box['y'] + para_box['height'] + chiudi_box['y']) / 2
-                            btn_x = para_box['x'] + para_box['width'] / 2
-                            self.logger.info(f"Calculated button position: x={btn_x}, y={btn_y}")
-                            self.logger.info(f"Para box: {para_box}, Chiudi box: {chiudi_box}")
-                            found_btn = {"x": btn_x, "y": btn_y, "calculated": True}
-                except Exception as e:
-                    self.logger.warning(f"Position calculation failed: {e}")
-
-            if not found_btn:
-                self.logger.warning("Could not find press & hold button")
-                self.screenshot("press_hold_button_not_found")
-                return False
-
-            # Take screenshot before attempting hold
-            self.screenshot("press_hold_before_action")
-
-            # Simulate press and hold with human-like behavior
-            self.logger.info("Performing human-like press & hold action...")
-
-            import random
-
-            # Get coordinates - either from bounding box or calculated position
-            if isinstance(found_btn, dict) and found_btn.get("calculated"):
-                # Use calculated position directly
-                x = found_btn["x"] + random.gauss(0, 3)
-                y = found_btn["y"] + random.gauss(0, 3)
-                self.logger.info(f"Using calculated position: ({x:.0f}, {y:.0f})")
-            else:
-                # Get button bounding box
-                box = found_btn.bounding_box()
-                if not box:
-                    self.logger.warning("Could not get button bounding box")
-                    return False
-                # Target slightly off-center (humans don't click exact center)
-                x = box['x'] + box['width'] / 2 + random.gauss(0, 3)
-                y = box['y'] + box['height'] / 2 + random.gauss(0, 3)
-                self.logger.info(f"Using bounding box position: ({x:.0f}, {y:.0f})")
-
-            # First, investigate what element is actually at this position
-            self.logger.info(f"Investigating element at ({x:.0f}, {y:.0f})...")
-
-            import time
-
-            # Check for PerimeterX elements - this is their anti-bot system
-            try:
-                px_info = self.page.evaluate("""
-                    (() => {
-                        // Find all PerimeterX related elements
-                        const pxElements = document.querySelectorAll('[class*="px-"]');
-                        const results = [];
-                        pxElements.forEach(el => {
-                            results.push({
-                                tag: el.tagName,
-                                class: el.className,
-                                rect: el.getBoundingClientRect(),
-                                children: el.children.length,
-                                innerHTML: el.innerHTML.substring(0, 300)
-                            });
-                        });
-
-                        // Also look for PerimeterX iframes
-                        const iframes = document.querySelectorAll('iframe[src*="px"], iframe[id*="px"]');
-                        const iframeResults = [];
-                        iframes.forEach(iframe => {
-                            iframeResults.push({
-                                id: iframe.id,
-                                src: iframe.src,
-                                rect: iframe.getBoundingClientRect()
-                            });
-                        });
-
-                        return { pxElements: results, pxIframes: iframeResults };
-                    })();
-                """)
-                self.logger.info(f"PerimeterX elements found: {len(px_info.get('pxElements', []))}")
-                for px_el in px_info.get('pxElements', []):
-                    self.logger.info(f"  PX element: {px_el['tag']} class='{px_el['class']}' rect={px_el['rect']}")
-                for iframe in px_info.get('pxIframes', []):
-                    self.logger.info(f"  PX iframe: id='{iframe['id']}' src='{iframe['src']}'")
-            except Exception as e:
-                self.logger.warning(f"PerimeterX investigation failed: {e}")
-
-            try:
-                # Get detailed info about element at position
-                element_info = self.page.evaluate(f"""
-                    (() => {{
-                        const x = {x};
-                        const y = {y};
-                        const elem = document.elementFromPoint(x, y);
-                        if (!elem) return {{ found: false }};
-
-                        // Get computed styles
-                        const styles = window.getComputedStyle(elem);
-
-                        // Check for shadow root
-                        let shadowInfo = null;
-                        if (elem.shadowRoot) {{
-                            shadowInfo = 'has shadowRoot';
-                        }}
-
-                        // Walk up to find any shadow hosts
-                        let parent = elem;
-                        let shadowHost = null;
-                        while (parent) {{
-                            if (parent.shadowRoot) {{
-                                shadowHost = parent.tagName;
-                                break;
-                            }}
-                            parent = parent.parentElement;
-                        }}
-
-                        return {{
-                            found: true,
-                            tagName: elem.tagName,
-                            className: elem.className,
-                            id: elem.id,
-                            textContent: (elem.textContent || '').substring(0, 100),
-                            innerHTML: (elem.innerHTML || '').substring(0, 200),
-                            rect: elem.getBoundingClientRect(),
-                            shadowInfo: shadowInfo,
-                            shadowHost: shadowHost,
-                            role: elem.getAttribute('role'),
-                            ariaLabel: elem.getAttribute('aria-label'),
-                            dataAttrs: Object.keys(elem.dataset || {{}}).join(', '),
-                            cursor: styles.cursor,
-                            pointerEvents: styles.pointerEvents
-                        }};
-                    }})();
-                """)
-                self.logger.info(f"Element at position: {element_info}")
-
-                # Also check if there's a canvas or iframe
-                canvas_check = self.page.evaluate(f"""
-                    (() => {{
-                        const x = {x};
-                        const y = {y};
-                        const elem = document.elementFromPoint(x, y);
-
-                        // Check parents for canvas or iframe
-                        let current = elem;
-                        while (current) {{
-                            if (current.tagName === 'CANVAS') return {{ type: 'canvas', elem: current.outerHTML.substring(0, 200) }};
-                            if (current.tagName === 'IFRAME') return {{ type: 'iframe', src: current.src }};
-                            current = current.parentElement;
-                        }}
-                        return {{ type: 'none' }};
-                    }})();
-                """)
-                self.logger.info(f"Canvas/iframe check: {canvas_check}")
-
-            except Exception as e:
-                self.logger.warning(f"Element investigation failed: {e}")
-
-            # The button is rendered by PerimeterX JS - try interacting with PX elements directly
-            self.logger.info("Attempting to interact with PerimeterX elements...")
-
-            hold_success = False
-            try:
-                # Try to click directly on the px-loading-area with force
-                px_loading = self.page.locator('.px-loading-area, .px-inner-loading-area, #px-captcha').first
-                if px_loading.is_visible(timeout=2000):
-                    self.logger.info("Found PX loading area, attempting forced click with delay...")
-
-                    # Get the bounding box of the PX element
-                    px_box = px_loading.bounding_box()
-                    if px_box:
-                        # Calculate center of PX element
-                        px_x = px_box['x'] + px_box['width'] / 2
-                        px_y = px_box['y'] + px_box['height'] / 2
-                        self.logger.info(f"PX element center: ({px_x:.0f}, {px_y:.0f})")
-
-                        # Use dispatchEvent to trigger pointer events directly on the element
-                        self.logger.info("Dispatching pointer events directly on PX element...")
-                        self.page.evaluate(f"""
-                            (async () => {{
-                                const x = {px_x};
-                                const y = {px_y};
-                                const elem = document.elementFromPoint(x, y);
-                                if (!elem) return;
-
-                                console.log('Target element:', elem);
-
-                                // Create and dispatch pointerdown event
-                                const pointerDown = new PointerEvent('pointerdown', {{
-                                    bubbles: true,
-                                    cancelable: true,
-                                    pointerId: 1,
-                                    pointerType: 'mouse',
-                                    isPrimary: true,
-                                    clientX: x,
-                                    clientY: y,
-                                    screenX: x,
-                                    screenY: y,
-                                    pressure: 0.5,
-                                    button: 0,
-                                    buttons: 1
-                                }});
-                                elem.dispatchEvent(pointerDown);
-
-                                // Also dispatch mousedown for compatibility
-                                const mouseDown = new MouseEvent('mousedown', {{
-                                    bubbles: true,
-                                    cancelable: true,
-                                    clientX: x,
-                                    clientY: y,
-                                    button: 0,
-                                    buttons: 1
-                                }});
-                                elem.dispatchEvent(mouseDown);
-                            }})();
-                        """)
-
-                        # Hold for duration
-                        self.logger.info("Holding for 8 seconds...")
-                        time.sleep(8.0)
-
-                        # Release
-                        self.page.evaluate(f"""
-                            (async () => {{
-                                const x = {px_x};
-                                const y = {px_y};
-                                const elem = document.elementFromPoint(x, y);
-                                if (!elem) return;
-
-                                // Dispatch pointerup
-                                const pointerUp = new PointerEvent('pointerup', {{
-                                    bubbles: true,
-                                    cancelable: true,
-                                    pointerId: 1,
-                                    pointerType: 'mouse',
-                                    isPrimary: true,
-                                    clientX: x,
-                                    clientY: y,
-                                    pressure: 0,
-                                    button: 0,
-                                    buttons: 0
-                                }});
-                                elem.dispatchEvent(pointerUp);
-
-                                // Also dispatch mouseup
-                                const mouseUp = new MouseEvent('mouseup', {{
-                                    bubbles: true,
-                                    cancelable: true,
-                                    clientX: x,
-                                    clientY: y,
-                                    button: 0,
-                                    buttons: 0
-                                }});
-                                elem.dispatchEvent(mouseUp);
-                            }})();
-                        """)
-                        self.logger.info("Pointer events dispatched")
-                        hold_success = True
-
-            except Exception as e:
-                self.logger.warning(f"PerimeterX element interaction failed: {e}")
-
-            # Try xdotool for real X11 input (most reliable for anti-bot bypass)
-            import subprocess
-            import os
-
-            xdotool_success = False
-            display = os.environ.get('DISPLAY')
-
-            if display:
-                self.logger.info(f"Attempting xdotool on DISPLAY={display}...")
-                try:
-                    # Get the browser window ID
-                    result = subprocess.run(
-                        ['xdotool', 'search', '--name', 'Chrom'],
-                        capture_output=True, text=True, timeout=5
-                    )
-                    window_ids = result.stdout.strip().split('\n')
-                    if window_ids and window_ids[0]:
-                        window_id = window_ids[0]
-                        self.logger.info(f"Found browser window: {window_id}")
-
-                        # Get window position
-                        pos_result = subprocess.run(
-                            ['xdotool', 'getwindowgeometry', window_id],
-                            capture_output=True, text=True, timeout=5
-                        )
-                        self.logger.info(f"Window geometry: {pos_result.stdout}")
-
-                        # Calculate absolute screen position
-                        # The viewport coordinates need to be adjusted for window position
-                        abs_x = int(x)
-                        abs_y = int(y)
-
-                        # Move mouse to position
-                        subprocess.run(['xdotool', 'mousemove', '--window', window_id, str(abs_x), str(abs_y)], timeout=5)
-                        time.sleep(0.1)
-
-                        # Mouse down
-                        subprocess.run(['xdotool', 'mousedown', '1'], timeout=5)
-                        self.logger.info(f"xdotool mousedown at ({abs_x}, {abs_y}), holding for 8 seconds...")
-
-                        # Hold
-                        time.sleep(8.0)
-
-                        # Mouse up
-                        subprocess.run(['xdotool', 'mouseup', '1'], timeout=5)
-                        self.logger.info("xdotool mouse hold completed")
-                        xdotool_success = True
-
-                except Exception as e:
-                    self.logger.warning(f"xdotool failed: {e}")
-
-            # Fallback to CDP touch events if xdotool didn't work
-            if not xdotool_success:
-                self.logger.info("Attempting CDP touch events...")
-                try:
-                    cdp = self.page.context.new_cdp_session(self.page)
-
-                    # Touch start at calculated position
-                    cdp.send("Input.dispatchTouchEvent", {
-                        "type": "touchStart",
-                        "touchPoints": [{
-                            "x": int(x),
-                            "y": int(y),
-                            "id": 1,
-                            "radiusX": 10,
-                            "radiusY": 10,
-                            "force": 0.5
-                        }]
-                    })
-                    self.logger.info(f"CDP touch start at ({x:.0f}, {y:.0f}), holding for 8 seconds...")
-
-                    # Hold for 8 seconds
-                    time.sleep(8.0)
-
-                    # Touch end
-                    cdp.send("Input.dispatchTouchEvent", {
-                        "type": "touchEnd",
-                        "touchPoints": []
-                    })
-                    self.logger.info("CDP touch hold completed")
-
-                except Exception as e:
-                    self.logger.warning(f"CDP touch events failed: {e}")
-                    # Final fallback to standard click
-                    self.page.mouse.click(x, y, delay=8000)
-
-            # Wait for the challenge to process with randomized timing
-            human_sleep(2.0, 0.3)
-
-            # Wait for result with human-like timing
-            human_sleep(2.0, 0.4)
-            self._wait_for_page()
-
-            # Check if modal is gone (check all language variants + translation keys)
-            modal_gone = True
-            modal_checks = [
-                '*:has-text("Before we continue")',
-                '*:has-text("Prima di continuare")',  # Italian
-                '*:has-text("Antes de continuar")',   # Spanish
-                '[role="dialog"]:has-text("Tieni premuto")',
-                '[role="dialog"]:has-text("Press & hold")',
-                # Translation key patterns
-                '*:has-text("global.captcha.perimeterx")',
-                '#px-captcha',  # PerimeterX container
-            ]
-            for check in modal_checks:
-                try:
-                    modal = self.page.locator(check).first
-                    if modal.is_visible(timeout=1500):
-                        modal_gone = False
-                        self.logger.debug(f"Modal still visible: {check}")
-                        break
-                except Exception:
-                    continue
-
-            if modal_gone:
-                self.logger.info("Press & hold challenge passed!")
-                return True
-
-            # Modal still visible - try clicking/holding again or wait longer
-            self.logger.warning("Press & hold modal still visible, waiting longer...")
-            human_sleep(3.0, 0.5)
-            self._wait_for_page()
-
-            # Check again
-            for check in modal_checks:
-                try:
-                    modal = self.page.locator(check).first
-                    if modal.is_visible(timeout=1500):
-                        self.logger.warning("Press & hold may not have worked - modal still visible")
-                        self.screenshot("press_hold_result")
-                        return False  # Return False to indicate failure
-                except Exception:
-                    continue
-
-            self.logger.info("Press & hold challenge passed after extended wait!")
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Error during press & hold: {e}")
-            return False
+        return True
 
     def _handle_2fa(self) -> bool:
         """
@@ -1100,7 +543,7 @@ class GlovoBot(BaseBot):
 
     def _dismiss_popups(self):
         """Dismiss Glovo-specific popups (announcements, modals, etc.)."""
-        self.logger.info("Checking for popups to dismiss...")
+        self.logger.debug("Checking for popups...")
 
         popup_selectors = [
             # Generic close buttons
@@ -1135,7 +578,7 @@ class GlovoBot(BaseBot):
             try:
                 button = self.page.locator(selector).first
                 if button.is_visible(timeout=500):
-                    self.logger.info(f"Found popup: {description}, dismissing...")
+                    self.logger.debug(f"Dismissing popup: {description}")
                     button.click()
                     human_sleep(0.3, 0.4)  # Randomized wait after dismissing
                     dismissed_count += 1
@@ -1143,9 +586,9 @@ class GlovoBot(BaseBot):
                 continue
 
         if dismissed_count > 0:
-            self.logger.info(f"Dismissed {dismissed_count} popup(s)")
+            self.logger.debug(f"Dismissed {dismissed_count} popup(s)")
         else:
-            self.logger.info("No popups found")
+            self.logger.debug("No popups found")
 
     def login(self) -> bool:
         """Log into Glovo Partner Portal with human-like behavior."""
@@ -1221,25 +664,25 @@ class GlovoBot(BaseBot):
             human_sleep(0.5, 0.3)
 
             # Try to find and fill email with human-like typing
-            self.logger.info("Looking for email input...")
+            self.logger.debug("Looking for email input...")
             email_input = self.page.locator(self.SELECTORS["email_input"]).first
             email_input.wait_for(timeout=10000)
 
             # Click and type with human-like behavior
             human_type(self.page, self.SELECTORS["email_input"], self.email)
-            self.logger.info("Email entered with human-like typing")
+            self.logger.debug("Email entered")
 
             # Brief pause before moving to password (humans look at screen)
             human_sleep(0.4, 0.4)
 
             # Look for password input
-            self.logger.info("Looking for password input...")
+            self.logger.debug("Looking for password input...")
             password_input = self.page.locator(self.SELECTORS["password_input"]).first
             password_input.wait_for(timeout=5000)
 
             # Type password with human-like behavior
             human_type(self.page, self.SELECTORS["password_input"], self.password)
-            self.logger.info("Password entered with human-like typing")
+            self.logger.debug("Password entered")
 
             self.screenshot("02_credentials_entered")
 
@@ -1247,7 +690,7 @@ class GlovoBot(BaseBot):
             human_sleep(0.3, 0.3)
 
             # Click login button with human-like behavior
-            self.logger.info("Clicking login button...")
+            self.logger.debug("Clicking login button...")
             login_button = self.page.locator(self.SELECTORS["login_button"]).first
             box = login_button.bounding_box()
             if box:
@@ -1334,7 +777,7 @@ class GlovoBot(BaseBot):
             try:
                 link = self.page.locator(selector).first
                 if link.is_visible(timeout=3000):
-                    self.logger.info(f"Found Order History link: {description}")
+                    self.logger.debug(f"Found Order History link: {description}")
                     link.click()
                     self._wait_for_page()
                     human_sleep(1.0, 0.3)
@@ -1390,7 +833,7 @@ class GlovoBot(BaseBot):
             start_date: Start of date range (default: 7 days ago)
             end_date: End of date range (default: today)
         """
-        self.logger.info("Looking for 'Scarica il report' button...")
+        self.logger.debug("Looking for download button...")
 
         # Find and click the download report button
         download_btn_selectors = [
@@ -1408,7 +851,7 @@ class GlovoBot(BaseBot):
             try:
                 btn = self.page.locator(selector).first
                 if btn.is_visible(timeout=3000):
-                    self.logger.info(f"Found download button: {selector}")
+                    self.logger.debug(f"Found download button: {selector}")
                     btn.click()
                     self._wait_for_page()
                     human_sleep(1.0, 0.3)
@@ -1438,7 +881,7 @@ class GlovoBot(BaseBot):
             try:
                 csv_option = self.page.locator(selector).first
                 if csv_option.is_visible(timeout=2000):
-                    self.logger.info(f"Selecting CSV format: {selector}")
+                    self.logger.debug(f"Selecting CSV format")
                     csv_option.click()
                     human_sleep(0.5, 0.3)
                     break
@@ -1480,7 +923,7 @@ class GlovoBot(BaseBot):
                     try:
                         confirm_btn = self.page.locator(selector).first
                         if confirm_btn.is_visible(timeout=1000):
-                            self.logger.info(f"Clicking confirm: {selector}")
+                            self.logger.debug(f"Clicking download confirm")
                             confirm_btn.click()
                             break
                     except Exception:

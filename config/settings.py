@@ -40,6 +40,7 @@ class Settings:
     headless: bool = True  # Set to False for debugging with xvfb-run
     slow_mo: int = 100  # Milliseconds between actions (helps with debugging)
     timeout: int = 60000  # Default timeout in milliseconds
+    debug_screenshots: bool = False  # Save screenshots during automation (privacy risk)
 
     # Session management
     session_max_age_days: int = 7  # Sessions older than this trigger a warning
