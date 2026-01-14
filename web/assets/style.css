@@ -18,12 +18,93 @@
     --gray-500: #6b7280;
     --gray-700: #374151;
     --gray-900: #111827;
+
+    /* Semantic colors (light mode) */
+    --bg-body: var(--gray-100);
+    --bg-card: #ffffff;
+    --bg-card-hover: var(--gray-50);
+    --text-primary: var(--gray-900);
+    --text-secondary: var(--gray-700);
+    --text-muted: var(--gray-500);
+    --border-color: var(--gray-200);
+    --border-light: var(--gray-100);
+}
+
+/* Dark Mode */
+body.dark-mode {
+    background: #0f172a !important;
+    color: #f1f5f9 !important;
+}
+
+body.dark-mode .navbar {
+    background: #1e293b !important;
+    border-bottom-color: #334155 !important;
+}
+
+body.dark-mode .stat-card,
+body.dark-mode .card,
+body.dark-mode .growth-card,
+body.dark-mode .pattern-item,
+body.dark-mode .custom-range-form,
+body.dark-mode .brand-list,
+body.dark-mode .brand-card {
+    background: #1e293b !important;
+}
+
+body.dark-mode h1,
+body.dark-mode h2,
+body.dark-mode .stat-value,
+body.dark-mode .nav-brand {
+    color: #f1f5f9 !important;
+}
+
+body.dark-mode .stat-label,
+body.dark-mode .metric-label,
+body.dark-mode .nav-user,
+body.dark-mode .date-label {
+    color: #94a3b8 !important;
+}
+
+body.dark-mode .metric-value {
+    color: #cbd5e1 !important;
+}
+
+body.dark-mode .metric-value.danger {
+    color: #f87171 !important;
+}
+
+body.dark-mode .metric-value.warning {
+    color: #fbbf24 !important;
+}
+
+body.dark-mode .table th {
+    color: #94a3b8 !important;
+}
+
+body.dark-mode .table td {
+    color: #cbd5e1 !important;
+    border-bottom-color: #334155 !important;
+}
+
+body.dark-mode .table tbody tr:hover {
+    background: #334155 !important;
+}
+
+body.dark-mode .btn-small {
+    background: #334155 !important;
+    color: #f1f5f9 !important;
+}
+
+body.dark-mode .theme-toggle {
+    background: #334155 !important;
+    border-color: #475569 !important;
+    color: #f1f5f9 !important;
 }
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: var(--gray-100);
-    color: var(--gray-900);
+    background: #f3f4f6;
+    color: #111827;
     line-height: 1.5;
 }
 
@@ -34,7 +115,7 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 1px solid var(--gray-200);
+    border-bottom: 1px solid #e5e7eb;
     position: sticky;
     top: 0;
     z-index: 100;
@@ -344,7 +425,7 @@ h2 {
 }
 
 .brand-card {
-    background: white;
+    background: var(--bg-card);
     padding: 1.5rem;
     border-radius: 8px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
@@ -505,7 +586,7 @@ h2 {
 }
 
 .login-container {
-    background: white;
+    background: var(--bg-card);
     padding: 2.5rem;
     border-radius: 12px;
     width: 100%;
@@ -704,7 +785,7 @@ code {
 
 /* Custom Date Range Form */
 .custom-range-form {
-    background: white;
+    background: var(--bg-card);
     padding: 1rem;
     border-radius: 8px;
     margin-bottom: 1rem;
@@ -920,7 +1001,7 @@ code {
     border: 1px solid var(--gray-300);
     border-radius: 6px;
     font-size: 0.9rem;
-    background: white;
+    background: var(--bg-card);
     cursor: pointer;
 }
 
@@ -945,7 +1026,7 @@ code {
 
 .brand-list {
     list-style: none;
-    background: white;
+    background: var(--bg-card);
     border-radius: 8px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     overflow: hidden;
@@ -1322,4 +1403,112 @@ code {
 td.danger {
     color: var(--danger);
     font-weight: 600;
+}
+
+/* Theme Toggle */
+.theme-toggle {
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 0.5rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #374151;
+    transition: all 0.2s;
+    position: relative;
+    z-index: 10;
+}
+
+.theme-toggle:hover {
+    background: #e5e7eb;
+}
+
+.theme-toggle svg {
+    width: 18px;
+    height: 18px;
+    pointer-events: none;
+}
+
+/* Light mode: show moon icon (to switch to dark) */
+.theme-toggle .icon-sun {
+    display: none;
+}
+
+.theme-toggle .icon-moon {
+    display: block;
+}
+
+/* Dark mode: show sun icon (to switch to light) */
+body.dark-mode .theme-toggle .icon-sun {
+    display: block;
+}
+
+body.dark-mode .theme-toggle .icon-moon {
+    display: none;
+}
+
+/* Dark mode specific overrides */
+body.dark-mode .brand-card,
+body.dark-mode .growth-card,
+body.dark-mode .pattern-item,
+body.dark-mode .custom-range-form,
+body.dark-mode .brand-list {
+    background: var(--bg-card);
+}
+
+body.dark-mode .table tbody tr:hover {
+    background: var(--bg-card-hover);
+}
+
+body.dark-mode .refund-row.restaurant {
+    background: rgba(239, 68, 68, 0.15);
+}
+
+body.dark-mode .refund-row.platform {
+    background: rgba(59, 130, 246, 0.15);
+}
+
+body.dark-mode .insight-text {
+    background: rgba(16, 185, 129, 0.15);
+    color: #6ee7b7;
+}
+
+body.dark-mode .partial-warning {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fcd34d;
+}
+
+body.dark-mode .location-filter-active {
+    background: rgba(59, 130, 246, 0.2);
+    color: #93c5fd;
+}
+
+body.dark-mode .chart-controls select {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+body.dark-mode .date-form input[type="date"] {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+body.dark-mode .login-container {
+    background: var(--bg-card);
+}
+
+body.dark-mode .login-form input {
+    background: var(--bg-body);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+body.dark-mode .form-group input {
+    background: var(--bg-body);
+    color: var(--text-primary);
+    border-color: var(--border-color);
 }

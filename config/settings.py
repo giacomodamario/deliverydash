@@ -30,14 +30,19 @@ class Settings:
 
     # Paths
     base_dir: Path = Path(__file__).parent.parent
-    downloads_dir: Path = base_dir / "data" / "downloads"
-    database_path: Path = base_dir / "data" / "invoices.db"
-    sessions_dir: Path = base_dir / "data" / "sessions"
+    data_dir: Path = base_dir / "data"
+    downloads_dir: Path = data_dir / "downloads"
+    db_path: Path = data_dir / "dash.db"
+    database_path: Path = db_path  # Alias for backwards compatibility
+    sessions_dir: Path = data_dir / "sessions"
 
     # Browser settings
-    headless: bool = False  # Set to True for production
+    headless: bool = True  # Set to False for debugging with xvfb-run
     slow_mo: int = 100  # Milliseconds between actions (helps with debugging)
-    timeout: int = 30000  # Default timeout in milliseconds
+    timeout: int = 60000  # Default timeout in milliseconds
+
+    # Session management
+    session_max_age_days: int = 7  # Sessions older than this trigger a warning
 
     # Credentials
     deliveroo = DeliverooCredentials()

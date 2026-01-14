@@ -9,9 +9,18 @@ from typing import Optional, List
 from datetime import datetime
 from dataclasses import dataclass
 
-from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
+from patchright.sync_api import sync_playwright, Browser, BrowserContext, Page
 
 from config import settings
+from .stealth import (
+    get_random_viewport,
+    get_random_user_agent,
+    human_sleep,
+    human_type,
+    human_click,
+    human_mouse_move,
+    random_scroll,
+)
 
 
 @dataclass
@@ -69,10 +78,21 @@ class BaseBot(ABC):
         self.logger.info(f"Starting {self.PLATFORM_NAME} bot...")
 
         self._playwright = sync_playwright().start()
-        self._browser = self._playwright.chromium.launch(
-            headless=self.headless,
-            slow_mo=self.slow_mo,
-        )
+
+        # Launch browser with stealth settings (Patchright handles anti-detection)
+        launch_args = {
+            'headless': self.headless,
+            'slow_mo': self.slow_mo,
+            'args': [
+                '--disable-blink-features=AutomationControlled',
+                '--disable-infobars',
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+            ],
+        }
+
+        self._browser = self._playwright.chromium.launch(**launch_args)
 
         # Try to load existing session
         storage_state = None
@@ -83,10 +103,26 @@ class BaseBot(ABC):
             except Exception as e:
                 self.logger.warning(f"Could not load session: {e}")
 
+        # Get randomized browser fingerprint for stealth
+        viewport = get_random_viewport()
+        user_agent = get_random_user_agent()
+        self.logger.info(f"Using viewport: {viewport['width']}x{viewport['height']}")
+        self.logger.debug(f"Using User-Agent: {user_agent}")
+
+        # Create browser context with stealth settings
         self._context = self._browser.new_context(
             accept_downloads=True,
-            viewport={"width": 1920, "height": 1080},
+            viewport=viewport,
             storage_state=storage_state,
+            user_agent=user_agent,
+            locale="en-GB",
+            timezone_id="Europe/Rome",
+            # Additional stealth settings
+            color_scheme="light",
+            device_scale_factor=1,
+            has_touch=True,  # Enable touch for press & hold challenges
+            is_mobile=False,
+            java_script_enabled=True,
         )
         self._page = self._context.new_page()
 
@@ -333,3 +369,34 @@ class BaseBot(ABC):
 
         self.logger.info(f"Full sync complete. Total invoices: {len(all_invoices)}")
         return all_invoices
+
+    def is_session_valid(self) -> bool:
+        """
+        Check if saved session exists and is still fresh.
+
+        Returns:
+            True if session file exists and is within max age, False otherwise
+        """
+        if not self.session_file.exists():
+            self.logger.info("No session file found")
+            return False
+
+        age_seconds = time.time() - self.session_file.stat().st_mtime
+        max_age_seconds = settings.session_max_age_days * 86400
+
+        if age_seconds > max_age_seconds:
+            self.logger.warning(
+                f"Session is {age_seconds / 86400:.1f} days old "
+                f"(max: {settings.session_max_age_days} days)"
+            )
+            return False
+
+        self.logger.info(f"Session is {age_seconds / 86400:.1f} days old - still valid")
+        return True
+
+    def get_session_age_days(self) -> float:
+        """Get the age of the session file in days."""
+        if not self.session_file.exists():
+            return float('inf')
+        age_seconds = time.time() - self.session_file.stat().st_mtime
+        return age_seconds / 86400

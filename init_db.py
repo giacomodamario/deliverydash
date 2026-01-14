@@ -2,9 +2,8 @@
 """Initialize the SQLite database with schema."""
 
 import sqlite3
-from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "data" / "dash.db"
+from config import settings
 
 SCHEMA = """
 -- Brands (restaurant groups/companies)
@@ -74,23 +73,40 @@ CREATE TABLE IF NOT EXISTS imports (
     imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Sync runs (track automated sync executions)
+CREATE TABLE IF NOT EXISTS sync_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    platform TEXT NOT NULL,
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    status TEXT NOT NULL,  -- 'success', 'failed'
+    files_downloaded INTEGER DEFAULT 0,
+    orders_imported INTEGER DEFAULT 0,
+    duration_seconds REAL DEFAULT 0,
+    error_message TEXT,
+    error_stage TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_orders_location ON orders(location_id);
 CREATE INDEX IF NOT EXISTS idx_orders_date ON orders(order_date);
 CREATE INDEX IF NOT EXISTS idx_orders_platform ON orders(platform);
 CREATE INDEX IF NOT EXISTS idx_locations_brand ON locations(brand_id);
 CREATE INDEX IF NOT EXISTS idx_locations_platform ON locations(platform);
+CREATE INDEX IF NOT EXISTS idx_sync_runs_platform ON sync_runs(platform);
+CREATE INDEX IF NOT EXISTS idx_sync_runs_created ON sync_runs(created_at);
 """
 
 
 def init_db():
     """Create database and tables."""
-    # Ensure data directory exists
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    db_path = settings.db_path
+    db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    print(f"Initializing database at {DB_PATH}")
+    print(f"Initializing database at {db_path}")
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     # Execute schema

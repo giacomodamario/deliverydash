@@ -1,23 +1,13 @@
 #!/usr/bin/env python3
 """Import downloaded CSVs into SQLite database."""
 
-import sqlite3
 import re
+import sqlite3
 from pathlib import Path
-from datetime import datetime
 
+from config import settings
 from parsers.deliveroo import parse_deliveroo_invoice
-
-DB_PATH = Path(__file__).parent / "data" / "dash.db"
-DOWNLOADS_DIR = Path(__file__).parent / "data" / "downloads" / "deliveroo"
-
-
-def slugify(text: str) -> str:
-    """Convert text to URL-safe slug."""
-    text = text.lower().strip()
-    text = re.sub(r'[^\w\s-]', '', text)
-    text = re.sub(r'[\s_]+', '-', text)
-    return text
+from utils import slugify
 
 
 def extract_brand_from_filename(filename: str) -> str:
@@ -141,7 +131,7 @@ def import_csv(filepath: Path, cursor, verbose: bool = False) -> dict:
             else:
                 stats["skipped"] += 1
 
-        except Exception as e:
+        except (sqlite3.Error, AttributeError, TypeError) as e:
             stats["errors"].append(f"Order {order.order_id}: {e}")
 
     # Log import
@@ -158,17 +148,20 @@ def main():
     import sys
     verbose = '-v' in sys.argv or '--verbose' in sys.argv
 
-    print(f"Importing CSVs from {DOWNLOADS_DIR}")
-    print(f"Database: {DB_PATH}")
+    downloads_dir = settings.downloads_dir / "deliveroo"
+    db_path = settings.db_path
+
+    print(f"Importing CSVs from {downloads_dir}")
+    print(f"Database: {db_path}")
     if verbose:
         print("Verbose mode: ON")
     print("=" * 60)
 
-    if not DOWNLOADS_DIR.exists():
-        print(f"Error: Downloads directory not found: {DOWNLOADS_DIR}")
+    if not downloads_dir.exists():
+        print(f"Error: Downloads directory not found: {downloads_dir}")
         return
 
-    csv_files = list(DOWNLOADS_DIR.glob("*.csv"))
+    csv_files = list(downloads_dir.glob("*.csv"))
 
     if not csv_files:
         print("No CSV files found in downloads directory")
@@ -176,7 +169,7 @@ def main():
 
     print(f"Found {len(csv_files)} CSV files\n")
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     total_orders = 0

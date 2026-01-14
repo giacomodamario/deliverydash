@@ -7,7 +7,7 @@ from typing import List, Optional
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urlencode
 
-from playwright.sync_api import TimeoutError as PlaywrightTimeout
+from patchright.sync_api import TimeoutError as PlaywrightTimeout
 
 from .base import BaseBot, DownloadedInvoice
 
@@ -44,6 +44,36 @@ class DeliverooBot(BaseBot):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.org_id = None  # Will be extracted from URL after login
+
+    def _wait_for_cloudflare(self, timeout_seconds: int = 60) -> bool:
+        """
+        Wait for Cloudflare challenge to auto-resolve.
+
+        Patchright's stealth features usually pass after waiting.
+        Returns True if challenge resolved, False otherwise.
+        """
+        challenge_indicators = [
+            "Verify you are human",
+            "Just a moment",
+            "Checking your browser",
+            "challenge-platform",
+        ]
+
+        self.logger.info(f"Waiting up to {timeout_seconds}s for Cloudflare to pass...")
+
+        for attempt in range(timeout_seconds // 2):
+            time.sleep(2)
+            content = self.page.content()
+
+            if not any(indicator in content for indicator in challenge_indicators):
+                self.logger.info("Cloudflare challenge passed!")
+                return True
+
+            if attempt % 5 == 0:
+                self.logger.info(f"Still waiting for Cloudflare... ({attempt * 2}s)")
+
+        self.logger.warning("Cloudflare challenge did not resolve in time")
+        return False
 
     def _extract_org_id(self):
         """Extract orgId from current URL."""
@@ -98,6 +128,10 @@ class DeliverooBot(BaseBot):
             # Bottom survey/feedback widget
             ('iframe[title*="survey"]', "Survey iframe - will try to close parent"),
             ('[class*="widget"] button:has-text("Close")', "Widget close"),
+
+            # Medallia NPS survey (bottom popup)
+            ('button:has-text("Close")', "Close button"),
+            ('[aria-label="close"]', "aria close"),
         ]
 
         dismissed_count = 0
@@ -148,6 +182,29 @@ class DeliverooBot(BaseBot):
 
         return False
 
+    def _handle_cloudflare_interstitial(self) -> bool:
+        """
+        Handle Cloudflare interstitial challenge page.
+        Returns True if challenge was handled, False if no challenge found.
+        """
+        page_content = self.page.content()
+
+        # Check if we're on a Cloudflare challenge page
+        challenge_indicators = [
+            "Verify you are human",
+            "Just a moment",
+            "Checking your browser",
+            "challenge-platform",
+        ]
+        if not any(indicator in page_content for indicator in challenge_indicators):
+            return False
+
+        self.logger.info("Cloudflare challenge detected, waiting for it to pass...")
+
+        # Patchright's stealth mode usually passes Cloudflare after waiting
+        # No need for CAPTCHA solvers - just wait
+        return self._wait_for_cloudflare(timeout_seconds=90)
+
     def login(self) -> bool:
         """Log into Deliveroo Partner Hub."""
         self.logger.info(f"Navigating to {self.LOGIN_URL}")
@@ -155,6 +212,10 @@ class DeliverooBot(BaseBot):
 
         # Wait for page (use domcontentloaded to avoid timeout)
         self._wait_for_page()
+
+        # Handle Cloudflare interstitial challenge if present
+        if self._handle_cloudflare_interstitial():
+            self._wait_for_page()
 
         # Dismiss cookie consent popup if present
         self.dismiss_cookie_consent()
@@ -177,6 +238,8 @@ class DeliverooBot(BaseBot):
             self.logger.info("Looking for email input...")
             email_input = self.page.locator(self.SELECTORS["email_input"]).first
             email_input.wait_for(timeout=10000)
+            email_input.click()
+            time.sleep(0.3)
             email_input.fill(self.email)
             self.logger.info("Email entered")
 
@@ -184,6 +247,8 @@ class DeliverooBot(BaseBot):
             self.logger.info("Looking for password input...")
             password_input = self.page.locator(self.SELECTORS["password_input"]).first
             password_input.wait_for(timeout=5000)
+            password_input.click()
+            time.sleep(0.3)
             password_input.fill(self.password)
             self.logger.info("Password entered")
 
@@ -231,7 +296,7 @@ class DeliverooBot(BaseBot):
             return False
 
     def _navigate_to_invoices(self) -> bool:
-        """Navigate to the invoices page."""
+        """Navigate to the invoices page and select Synthesis tab."""
         self.logger.info("Navigating to invoices page...")
 
         # Dismiss any popups first
@@ -247,20 +312,49 @@ class DeliverooBot(BaseBot):
                 self._dismiss_popups()
                 self._extract_org_id()  # Extract orgId from URL after navigation
                 self.screenshot("03_invoices_page")
-                return True
         except Exception as e:
             self.logger.info(f"Sidebar link not found: {e}")
+            # Fall back to direct URL (with orgId if available)
+            invoices_url = self.INVOICES_URL
+            if self.org_id:
+                invoices_url = f"{self.INVOICES_URL}?orgId={self.org_id}"
 
-        # Fall back to direct URL (with orgId if available)
-        invoices_url = self.INVOICES_URL
-        if self.org_id:
-            invoices_url = f"{self.INVOICES_URL}?orgId={self.org_id}"
+            self.logger.info(f"Navigating directly to {invoices_url}")
+            self.page.goto(invoices_url)
+            self._wait_for_page()
+            self._dismiss_popups()
+            self.screenshot("03_invoices_page")
 
-        self.logger.info(f"Navigating directly to {invoices_url}")
-        self.page.goto(invoices_url)
-        self._wait_for_page()
-        self._dismiss_popups()
-        self.screenshot("03_invoices_page")
+        # Now click on "Synthesis" / "Statement" / "Sintesi" tab
+        self.logger.info("Looking for Synthesis/Statement tab...")
+        synthesis_selectors = [
+            'button:has-text("Synthesis")',
+            'button:has-text("Statement")',
+            'button:has-text("Sintesi")',
+            'a:has-text("Synthesis")',
+            'a:has-text("Statement")',
+            'a:has-text("Sintesi")',
+            '[role="tab"]:has-text("Synthesis")',
+            '[role="tab"]:has-text("Statement")',
+            '[role="tab"]:has-text("Sintesi")',
+            # Also try partial matches
+            '*:has-text("Synthesis")',
+            '*:has-text("Sintesi")',
+        ]
+
+        for selector in synthesis_selectors:
+            try:
+                tab = self.page.locator(selector).first
+                if tab.is_visible(timeout=2000):
+                    self.logger.info(f"Found Synthesis tab: {selector}")
+                    tab.click()
+                    self._wait_for_page()
+                    time.sleep(1)  # Wait for tab content to load
+                    self._dismiss_popups()
+                    self.screenshot("03b_synthesis_tab")
+                    break
+            except Exception:
+                continue
 
         # Check if we're on the invoices page
         if "invoice" in self.page.url.lower() or "reports" in self.page.url.lower():
@@ -277,11 +371,34 @@ class DeliverooBot(BaseBot):
         # TODO: Implement location switching if account has multiple locations
         return [{"id": "default", "name": "Default Location"}]
 
+    def _wait_for_invoices_to_load(self, timeout: int = 15) -> bool:
+        """Wait for the invoice table to have data (not 'No items to display')."""
+        self.logger.info("Waiting for invoices to load...")
+
+        for attempt in range(timeout):
+            # First dismiss any popups that might block
+            self._dismiss_popups()
+
+            # Check if "No items to display" is visible
+            no_items = self.page.locator('text="No items to display"')
+            if no_items.count() == 0:
+                # Check if we have actual invoice rows
+                csv_links = self.page.locator('a:has-text("CSV")').all()
+                if csv_links:
+                    self.logger.info(f"Invoices loaded! Found {len(csv_links)} CSV links")
+                    return True
+
+            time.sleep(1)
+            self.logger.info(f"Waiting for invoices... (attempt {attempt + 1}/{timeout})")
+
+        self.logger.warning("Invoices did not load within timeout")
+        return False
+
     def _get_all_csv_links(self) -> list:
         """Get all CSV download links from the current page."""
         try:
-            # Wait for page content to load
-            time.sleep(2)
+            # Wait for invoices to load first
+            self._wait_for_invoices_to_load()
 
             # Try multiple selectors to find CSV links
             csv_selectors = [
@@ -349,55 +466,93 @@ class DeliverooBot(BaseBot):
         return info
 
     def _download_csv(self, csv_link, index: int) -> Optional[Path]:
-        """Download a CSV file - handles new tab/popup if link opens one."""
+        """Download CSV using Playwright's request context (shares browser cookies)."""
         try:
             self.logger.info(f"Downloading CSV #{index+1}...")
 
-            # Scroll link into view first
-            csv_link.scroll_into_view_if_needed()
-            time.sleep(0.5)
+            # Get the href URL
+            href = csv_link.get_attribute("href") or ""
+            self.logger.info(f"CSV URL: {href[:80]}...")
 
-            # Check if link opens in new tab
-            target = csv_link.get_attribute("target")
-            href = csv_link.get_attribute("href")
-            self.logger.debug(f"Link target={target}, href={href[:80] if href else 'None'}...")
+            # Extract invoice ID for filename
+            invoice_id = None
+            invoice_match = re.search(r'/invoices/(\d+)/', href)
+            if invoice_match:
+                invoice_id = invoice_match.group(1)
 
-            if target == "_blank" or target == "blank":
-                # Link opens in new tab - wait for popup and download from there
-                self.logger.info("Link opens in new tab, handling popup...")
-                with self.page.context.expect_page() as new_page_info:
-                    csv_link.click()
-
-                new_page = new_page_info.value
-                new_page.wait_for_load_state("load")
-
-                # Wait for download from the new page
-                with new_page.expect_download(timeout=30000) as download_info:
-                    pass  # Download should already be triggered
-
-                download = download_info.value
-                new_page.close()
-
+            # Make absolute URL
+            if href.startswith("/"):
+                full_url = f"https://partner-hub.deliveroo.com{href}"
             else:
-                # Regular link - expect download directly
-                with self.page.expect_download(timeout=30000) as download_info:
+                full_url = href
+
+            # Use Playwright's request context which shares cookies with browser
+            try:
+                response = self.page.context.request.get(
+                    full_url,
+                    headers={
+                        'Accept': 'text/csv, application/csv, */*',
+                        'Referer': self.page.url,
+                    }
+                )
+
+                if response.status == 200:
+                    content = response.text()
+
+                    # Verify it looks like CSV
+                    if content and len(content) > 100:
+                        lines = content.strip().split('\n')
+                        if len(lines) >= 2 and ',' in lines[0]:
+                            # Save the content
+                            if invoice_id:
+                                filename = f"deliveroo_statement_{invoice_id}.csv"
+                            else:
+                                filename = f"invoice_{index+1}.csv"
+
+                            save_path = self.downloads_dir / filename
+
+                            with open(save_path, "w", encoding="utf-8") as f:
+                                f.write(content)
+
+                            self.logger.info(f"Downloaded: {save_path.name} ({len(content)} bytes)")
+                            return save_path
+                        else:
+                            self.logger.warning(f"Content doesn't look like CSV for #{index+1}")
+                    else:
+                        self.logger.warning(f"No/empty content for #{index+1}")
+                else:
+                    self.logger.warning(f"Request failed for #{index+1}: HTTP {response.status}")
+
+            except Exception as e:
+                self.logger.warning(f"Request context failed for #{index+1}: {e}")
+
+            # Fallback: Try clicking the link with download attribute
+            self.logger.info(f"Trying click-based download for #{index+1}...")
+            try:
+                # Set download attribute to force download
+                csv_link.evaluate('el => el.setAttribute("download", "")')
+
+                with self.page.expect_download(timeout=15000) as download_info:
                     csv_link.click()
 
                 download = download_info.value
 
-            # Use suggested filename or generate one
-            filename = download.suggested_filename or f"invoice_{index+1}.csv"
-            filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
-            save_path = self.downloads_dir / filename
+                if invoice_id:
+                    filename = f"deliveroo_statement_{invoice_id}.csv"
+                else:
+                    filename = download.suggested_filename or f"invoice_{index+1}.csv"
 
-            download.save_as(str(save_path))
-            self.logger.info(f"Downloaded: {save_path.name}")
+                save_path = self.downloads_dir / filename
+                download.save_as(save_path)
 
-            time.sleep(0.5)
-            return save_path
+                self.logger.info(f"Downloaded via click: {save_path.name}")
+                return save_path
 
-        except PlaywrightTimeout:
-            self.logger.warning(f"Download timeout for CSV #{index+1}")
+            except PlaywrightTimeout:
+                self.logger.warning(f"Click download also timed out for #{index+1}")
+
+            return None
+
         except Exception as e:
             self.logger.error(f"Error downloading CSV #{index+1}: {e}")
 
