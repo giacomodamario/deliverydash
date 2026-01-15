@@ -337,12 +337,19 @@ class BaseBot(ABC):
         """
         pass
 
-    def run_full_sync(self, max_invoices: int = 5) -> List[DownloadedInvoice]:
+    def run_full_sync(
+        self,
+        max_invoices: int = 5,
+        start_date: datetime = None,
+        end_date: datetime = None,
+    ) -> List[DownloadedInvoice]:
         """
         Run a synchronization - download invoices.
 
         Args:
             max_invoices: Max invoices to check (default 5 for quick sync).
+            start_date: Only download invoices on or after this date.
+            end_date: Only download invoices on or before this date.
         """
         self.logger.info(f"Starting sync for {self.PLATFORM_NAME}")
 
@@ -361,7 +368,12 @@ class BaseBot(ABC):
             # Download invoices for each location
             for location in locations:
                 self.logger.info(f"Processing location: {location.get('name', location.get('id'))}")
-                invoices = self.download_invoices(location_id=location["id"], max_invoices=max_invoices)
+                invoices = self.download_invoices(
+                    location_id=location["id"],
+                    start_date=start_date,
+                    end_date=end_date,
+                    max_invoices=max_invoices,
+                )
                 all_invoices.extend(invoices)
                 self.logger.info(f"Downloaded {len(invoices)} invoices for this location")
 

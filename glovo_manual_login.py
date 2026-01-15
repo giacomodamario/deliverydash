@@ -147,23 +147,46 @@ def main():
 
         print()
         print(">>> Please log in to Glovo in the browser window <<<")
+        print(">>> Login will be detected automatically <<<")
         print()
 
-        # Wait for user to log in
-        input("Press ENTER after you have successfully logged in...")
+        # Auto-detect login by checking localStorage for authentication
+        max_wait = 300  # 5 minutes max
+        poll_interval = 2
+        waited = 0
 
-        # Verify login was successful
+        def is_authenticated():
+            """Check localStorage for isAuthenticated flag."""
+            try:
+                result = page.evaluate("""() => {
+                    const persist = localStorage.getItem('persist:root');
+                    if (!persist) return false;
+                    const data = JSON.parse(persist);
+                    const auth = JSON.parse(data.authentication || '{}');
+                    return auth.isAuthenticated === true && !!auth.accessToken;
+                }""")
+                return result
+            except:
+                return False
+
+        print("Waiting for login... (checking every 2s, timeout: 5 min)")
+        while waited < max_wait:
+            if is_authenticated():
+                print(f"\nLogin detected! (isAuthenticated=true)")
+                break
+
+            time.sleep(poll_interval)
+            waited += poll_interval
+
+            # Progress indicator every 10 seconds
+            if waited % 10 == 0:
+                print(f"  Still waiting... ({waited}s elapsed)")
+
+        if waited >= max_wait:
+            print("\nTimeout waiting for login. Saving session anyway...")
+
         current_url = page.url
-        print(f"Current URL: {current_url}")
-
-        if "/login" in current_url or "/auth" in current_url:
-            print()
-            print("WARNING: You still appear to be on the login page.")
-            confirm = input("Are you sure you're logged in? (y/n): ")
-            if confirm.lower() != 'y':
-                print("Aborting. Please try again.")
-                browser.close()
-                return
+        print(f"Final URL: {current_url}")
 
         # Save session state
         print()

@@ -44,6 +44,7 @@ class DeliverooBot(BaseBot):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.org_id = None  # Will be extracted from URL after login
+        self.locations_cache = []  # Cache of discovered locations/branches
 
     def _wait_for_cloudflare(self, timeout_seconds: int = 60) -> bool:
         """
@@ -89,6 +90,20 @@ class DeliverooBot(BaseBot):
     def _dismiss_popups(self):
         """Dismiss Deliveroo-specific popups (announcements, surveys, modals)."""
         self.logger.info("Checking for popups to dismiss...")
+
+        # First: Handle DAC7 tax compliance popup (has no close button)
+        try:
+            dac7_visible = self.page.locator('text="DAC7 information required"').is_visible(timeout=1000)
+            if dac7_visible:
+                self.logger.info("Found DAC7 popup, pressing Escape to dismiss...")
+                self.page.keyboard.press("Escape")
+                time.sleep(0.5)
+                # If still visible, try clicking outside
+                if self.page.locator('text="DAC7 information required"').is_visible(timeout=500):
+                    self.page.mouse.click(10, 10)
+                    time.sleep(0.3)
+        except Exception:
+            pass
 
         # List of popup close actions to try
         popup_selectors = [
@@ -366,10 +381,311 @@ class DeliverooBot(BaseBot):
         return False
 
     def get_locations(self) -> List[dict]:
-        """Get list of all locations/restaurants for the account."""
-        # For now, return a default location
-        # TODO: Implement location switching if account has multiple locations
-        return [{"id": "default", "name": "Default Location"}]
+        """Get list of all locations/restaurants (branches) for the account.
+
+        Deliveroo Partner Hub shows a "Filter Sites" modal when clicking the store selector.
+        The modal contains radio buttons for each business/location.
+        """
+        if self.locations_cache:
+            return self.locations_cache
+
+        locations = []
+
+        try:
+            # First, force dismiss any blocking modals (DAC7, etc.)
+            self._dismiss_popups()
+
+            # Force remove any remaining modal overlays via JS
+            try:
+                self.page.evaluate("""
+                    document.querySelectorAll('.ReactModalPortal').forEach(el => el.innerHTML = '');
+                """)
+                time.sleep(0.5)
+            except Exception:
+                pass
+
+            # Click the store selector button using data-testid (most reliable)
+            branch_trigger_selectors = [
+                '[data-testid="pillButtonSiteSelection"]',
+                'button:has-text("Poke House")',
+                'button:has-text("store")',
+            ]
+
+            modal_opened = False
+            for selector in branch_trigger_selectors:
+                try:
+                    trigger = self.page.locator(selector).first
+                    if trigger.is_visible(timeout=2000):
+                        trigger_text = trigger.text_content().strip()[:50]
+                        self.logger.info(f"Found store selector: '{trigger_text}'")
+                        # Use force=True to bypass any intercepting elements
+                        trigger.click(force=True)
+                        time.sleep(2)  # Wait for modal animation
+                        modal_opened = True
+                        break
+                except Exception:
+                    continue
+
+            if modal_opened:
+                # Look for the "Filter Sites" modal using data-testid
+                modal_selectors = [
+                    '[data-testid="siteSelectionModal"]',
+                    '[class*="Modal"]:has-text("Businesses")',
+                    '[class*="Modal"]:has-text("Filter Sites")',
+                ]
+
+                modal = None
+                for selector in modal_selectors:
+                    try:
+                        m = self.page.locator(selector).first
+                        if m.is_visible(timeout=2000):
+                            modal = m
+                            self.logger.info(f"Found Filter Sites modal")
+                            break
+                    except Exception:
+                        continue
+
+                if modal:
+                    # Find all radio button options within the modal
+                    # Each option is a clickable element with the business name
+                    option_selectors = [
+                        # Radio button labels (most common pattern)
+                        'label:has(input[type="radio"])',
+                        'label:has([role="radio"])',
+                        # Material-UI style radio groups
+                        '[class*="Radio"] label',
+                        '[class*="FormControlLabel"]',
+                        # Generic clickable items in the list
+                        '[class*="ListItem"]:has([type="radio"])',
+                        # Direct radio inputs with adjacent text
+                        'input[type="radio"]',
+                    ]
+
+                    for option_selector in option_selectors:
+                        try:
+                            options = modal.locator(option_selector).all()
+                            if options and len(options) >= 1:
+                                self.logger.info(f"Found {len(options)} business options")
+                                for i, option in enumerate(options):
+                                    try:
+                                        # Get the business name
+                                        if option_selector == 'input[type="radio"]':
+                                            # For radio inputs, get the label text
+                                            name = option.evaluate("""el => {
+                                                // Try to find associated label
+                                                if (el.labels && el.labels[0]) return el.labels[0].textContent;
+                                                // Try parent label
+                                                let label = el.closest('label');
+                                                if (label) return label.textContent;
+                                                // Try next sibling
+                                                let next = el.nextElementSibling;
+                                                if (next) return next.textContent;
+                                                // Try parent's text
+                                                return el.parentElement?.textContent || '';
+                                            }""")
+                                        else:
+                                            name = option.text_content()
+
+                                        name = name.strip() if name else ""
+
+                                        # Skip empty or control items
+                                        if not name or name.lower() in ['', 'select', 'cancel', 'close', 'businesses:']:
+                                            continue
+
+                                        # Try to get value/id from the radio input
+                                        branch_id = None
+                                        try:
+                                            if option_selector == 'input[type="radio"]':
+                                                branch_id = option.get_attribute('value')
+                                            else:
+                                                radio_input = option.locator('input[type="radio"]').first
+                                                branch_id = radio_input.get_attribute('value')
+                                        except Exception:
+                                            pass
+
+                                        if not branch_id:
+                                            branch_id = f"business_{i}"
+
+                                        locations.append({
+                                            "id": branch_id,
+                                            "name": name,
+                                            "index": i,
+                                        })
+                                        self.logger.info(f"  Business {len(locations)}: {name}")
+                                    except Exception as e:
+                                        self.logger.debug(f"Error extracting business: {e}")
+
+                                if locations:
+                                    break
+                        except Exception:
+                            continue
+
+                # Close the modal
+                try:
+                    # Try Cancel button first
+                    cancel_btn = self.page.locator('button:has-text("Cancel")').first
+                    if cancel_btn.is_visible(timeout=500):
+                        cancel_btn.click()
+                    else:
+                        # Fall back to Escape key or X button
+                        close_btn = self.page.locator('[class*="Modal"] button:has-text("close"), [class*="Modal"] button[aria-label="Close"]').first
+                        if close_btn.is_visible(timeout=500):
+                            close_btn.click()
+                        else:
+                            self.page.keyboard.press("Escape")
+                    time.sleep(0.5)
+                except Exception:
+                    pass
+
+            # Fallback: URL-based detection if modal didn't work
+            if not locations:
+                self.logger.info("No businesses found in modal, trying URL-based detection...")
+
+                current_url = self.page.url
+                parsed = urlparse(current_url)
+                params = parse_qs(parsed.query)
+
+                branch_id = params.get('branchId', [None])[0]
+                org_id = params.get('orgId', [None])[0]
+
+                if branch_id:
+                    branch_name = "Default Location"
+                    try:
+                        header_text = self.page.locator('header').first.text_content()
+                        if header_text:
+                            branch_name = header_text.split('\n')[0].strip()[:50] or "Default Location"
+                    except Exception:
+                        pass
+
+                    locations.append({
+                        "id": branch_id,
+                        "name": branch_name,
+                        "org_id": org_id,
+                    })
+                    self.logger.info(f"Detected from URL: {branch_name} (branchId: {branch_id})")
+
+            if not locations:
+                self.logger.warning("Could not detect businesses, using default")
+                locations.append({"id": "default", "name": "Default Location"})
+
+        except Exception as e:
+            self.logger.error(f"Error getting locations: {e}")
+            locations.append({"id": "default", "name": "Default Location"})
+
+        self.locations_cache = locations
+        return locations
+
+    def _switch_to_branch(self, branch_id: str, branch_name: str = None) -> bool:
+        """Switch to a specific business/location using the Filter Sites modal.
+
+        Args:
+            branch_id: The business/org ID to switch to
+            branch_name: Optional business name for logging
+
+        Returns:
+            True if switch was successful, False otherwise
+        """
+        if branch_id == "default":
+            return True  # No switch needed
+
+        self.logger.info(f"Switching to business: {branch_name or branch_id}")
+
+        try:
+            # Navigate to main dashboard first - the store selector is not visible on all pages
+            self.page.goto("https://partner-hub.deliveroo.com/")
+            self._wait_for_page()
+            self._dismiss_popups()
+
+            # Open the store selector modal
+            trigger_selectors = [
+                'button:has-text("store")',
+                'button:has-text("DISABLED")',
+            ]
+
+            modal_opened = False
+            for selector in trigger_selectors:
+                try:
+                    trigger = self.page.locator(selector).first
+                    if trigger.is_visible(timeout=2000):
+                        trigger.click()
+                        time.sleep(1.5)
+                        modal_opened = True
+                        break
+                except Exception:
+                    continue
+
+            if not modal_opened:
+                self.logger.warning("Could not open store selector modal")
+                return False
+
+            # Find and click the radio button for this business
+            # Try by value attribute first (the business ID)
+            radio_clicked = False
+
+            try:
+                radio = self.page.locator(f'input[type="radio"][value="{branch_id}"]').first
+                if radio.is_visible(timeout=1000):
+                    radio.click()
+                    radio_clicked = True
+                    self.logger.info(f"Clicked radio button with value={branch_id}")
+            except Exception:
+                pass
+
+            # If not found by value, try by label text
+            if not radio_clicked and branch_name:
+                try:
+                    # Find label containing the business name and click its radio
+                    label = self.page.locator(f'label:has-text("{branch_name}")').first
+                    if label.is_visible(timeout=1000):
+                        label.click()
+                        radio_clicked = True
+                        self.logger.info(f"Clicked label for {branch_name}")
+                except Exception:
+                    pass
+
+            if not radio_clicked:
+                self.logger.warning(f"Could not find radio button for {branch_name or branch_id}")
+                # Close modal and return
+                self.page.keyboard.press("Escape")
+                time.sleep(0.5)
+                return False
+
+            # Click the Select button to confirm selection
+            time.sleep(0.5)
+            apply_selectors = [
+                'button:has-text("Select")',
+                'button:has-text("Apply")',
+                'button:has-text("Filter")',
+                'button:has-text("Confirm")',
+                'button[type="submit"]',
+            ]
+
+            applied = False
+            for selector in apply_selectors:
+                try:
+                    btn = self.page.locator(selector).first
+                    if btn.is_visible(timeout=500):
+                        btn.click()
+                        applied = True
+                        self.logger.info("Applied business filter")
+                        break
+                except Exception:
+                    continue
+
+            if not applied:
+                # If no apply button, the radio click might auto-apply
+                # Try closing modal with Escape
+                self.page.keyboard.press("Escape")
+
+            self._wait_for_page()
+            self._dismiss_popups()
+
+            self.logger.info(f"Successfully switched to {branch_name or branch_id}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error switching business: {e}")
+            return False
 
     def _wait_for_invoices_to_load(self, timeout: int = 15) -> bool:
         """Wait for the invoice table to have data (not 'No items to display')."""
@@ -432,15 +748,28 @@ class DeliverooBot(BaseBot):
         }
 
         try:
-            # Try to get the parent row/container and extract text
-            # Go up to find a container with invoice info
-            parent = csv_link.locator("xpath=ancestor::tr | ancestor::div[contains(@class, 'row')] | ancestor::*[contains(@class, 'invoice')]").first
+            # Deliveroo uses custom div-based table with classes like tcl__TableRow-*
+            # Try multiple approaches to get the parent row
+            text = csv_link.evaluate("""el => {
+                // Approach 1: Look for Deliveroo's custom TableRow class
+                let row = el.closest('div[class*="TableRow"]');
+                if (row) return row.textContent;
 
-            if parent.count() > 0:
-                text = parent.text_content()
-            else:
-                # If no specific parent found, get broader context
-                text = csv_link.evaluate("el => el.closest('tr, [role=\"row\"], [class*=\"row\"]')?.textContent || ''")
+                // Approach 2: Standard tr
+                row = el.closest('tr');
+                if (row) return row.textContent;
+
+                // Approach 3: Any element with role="row"
+                row = el.closest('[role="row"]');
+                if (row) return row.textContent;
+
+                // Approach 4: Walk up 4-5 levels to get broader context
+                let current = el;
+                for (let i = 0; i < 5 && current; i++) {
+                    current = current.parentElement;
+                }
+                return current ? current.textContent : '';
+            }""")
 
             if text:
                 # Extract invoice number (various patterns: res-it-XXX, Fattura n° XXX, Invoice #XXX)
@@ -448,17 +777,35 @@ class DeliverooBot(BaseBot):
                 if invoice_match:
                     info["invoice_number"] = invoice_match.group(1) if invoice_match.group(1).startswith("res-") else invoice_match.group(2)
 
-                # Extract date patterns
-                date_matches = re.findall(r'\d{1,2}/\d{1,2}/\d{4}|\d{1,2}\s+\w+\s+\d{4}', text)
+                # Extract date patterns (various formats used by Deliveroo)
+                date_patterns = [
+                    r'\d{1,2}/\d{1,2}/\d{4}',           # 14/01/2024
+                    r'\d{1,2}-\d{1,2}-\d{4}',           # 14-01-2024
+                    r'\d{1,2}\.\d{1,2}\.\d{4}',         # 14.01.2024
+                    r'\d{4}-\d{2}-\d{2}',               # 2024-01-14
+                    r'\d{1,2}\s+\w+\s+\d{4}',           # 14 January 2024
+                    r'\w+\s+\d{1,2},?\s+\d{4}',         # January 14, 2024
+                    r'\d{1,2}\s+\w{3}\s+\d{4}',         # 14 Jan 2024
+                    r'\d{1,2}\s+\w{3}\s+\d{2}',         # 14 Jan 24
+                ]
+                combined_pattern = '|'.join(f'({p})' for p in date_patterns)
+                date_matches = re.findall(combined_pattern, text, re.IGNORECASE)
+
                 if date_matches:
-                    info["period"] = date_matches[0]
-                    if len(date_matches) > 1:
-                        info["due_date"] = date_matches[1]
+                    # Flatten the tuple results and filter empty strings
+                    flat_dates = [d for match in date_matches for d in match if d]
+                    if flat_dates:
+                        info["period"] = flat_dates[0]
+                        if len(flat_dates) > 1:
+                            info["due_date"] = flat_dates[1]
+                        self.logger.debug(f"Extracted dates: {flat_dates} from row")
 
                 # Extract amount
                 amount_match = re.search(r'[€£$]\s*-?[\d.,]+', text)
                 if amount_match:
                     info["total"] = amount_match.group(0)
+            else:
+                self.logger.debug("No text content found in invoice row")
 
         except Exception as e:
             self.logger.debug(f"Error extracting invoice info: {e}")
@@ -616,6 +963,28 @@ class DeliverooBot(BaseBot):
             self.logger.error(f"Error navigating to next page: {e}")
         return False
 
+    def _parse_invoice_date(self, date_str: str) -> Optional[datetime]:
+        """Parse invoice date from various formats."""
+        if not date_str:
+            return None
+
+        date_formats = [
+            "%d/%m/%Y",
+            "%d-%m-%Y",
+            "%d %B %Y",
+            "%d %b %Y",
+            "%Y-%m-%d",
+            "%d.%m.%Y",
+        ]
+
+        for fmt in date_formats:
+            try:
+                return datetime.strptime(date_str.strip(), fmt)
+            except ValueError:
+                continue
+
+        return None
+
     def download_invoices(
         self,
         location_id: str = None,
@@ -626,10 +995,23 @@ class DeliverooBot(BaseBot):
         """Download invoices (CSV from Statement column).
 
         Args:
+            location_id: Branch/location ID to download invoices for
+            start_date: Only download invoices on or after this date
+            end_date: Only download invoices on or before this date
             max_invoices: Max invoices to check (default 5, newest first).
                          Use higher value for initial full sync.
         """
         downloaded_invoices = []
+
+        # Switch to specific branch if needed
+        if location_id and location_id != "default":
+            # Find branch name from cache
+            branch_name = None
+            for loc in self.locations_cache:
+                if loc.get("id") == location_id:
+                    branch_name = loc.get("name")
+                    break
+            self._switch_to_branch(location_id, branch_name)
 
         # Navigate to invoices section
         if not self._navigate_to_invoices():
@@ -637,6 +1019,15 @@ class DeliverooBot(BaseBot):
 
         # Dismiss any popups (including NPS survey)
         self._dismiss_popups()
+
+        # Log date filter if specified
+        if start_date or end_date:
+            date_range = []
+            if start_date:
+                date_range.append(f"from {start_date.strftime('%Y-%m-%d')}")
+            if end_date:
+                date_range.append(f"to {end_date.strftime('%Y-%m-%d')}")
+            self.logger.info(f"Filtering invoices {' '.join(date_range)}")
 
         # Process first page only (newest invoices)
         self.logger.info("Processing invoices (newest first)...")
@@ -658,11 +1049,41 @@ class DeliverooBot(BaseBot):
         self.logger.info(f"Checking {len(csv_links)} newest invoices...")
 
         total_downloaded = 0
+        total_skipped_date = 0
         consecutive_skips = 0
 
         for index, csv_link in enumerate(csv_links):
             # Extract invoice info for this link
             invoice_info = self._extract_invoice_info_from_link(csv_link)
+
+            # Parse invoice date for filtering
+            invoice_date = self._parse_invoice_date(invoice_info.get("period"))
+
+            # Log date extraction result for first few invoices
+            if index < 5:
+                if invoice_date:
+                    self.logger.info(f"Invoice #{index+1} date: {invoice_date.strftime('%Y-%m-%d')} (from: {invoice_info.get('period')})")
+                else:
+                    self.logger.info(f"Invoice #{index+1}: No date found (period: {invoice_info.get('period')})")
+
+            # Apply date filter if specified
+            if invoice_date:
+                # Skip if invoice is after end_date
+                if end_date and invoice_date.date() > end_date.date():
+                    self.logger.debug(f"Skipping #{index+1}: {invoice_date.date()} is after end_date {end_date.date()}")
+                    continue
+
+                # Stop if invoice is before start_date (invoices are sorted newest first)
+                if start_date and invoice_date.date() < start_date.date():
+                    self.logger.info(f"Stopping: invoice #{index+1} ({invoice_date.date()}) is before start_date ({start_date.date()})")
+                    total_skipped_date += 1
+                    # If we've seen 2 consecutive invoices older than start_date, stop
+                    if total_skipped_date >= 2:
+                        self.logger.info("Found 2 invoices older than start_date, stopping")
+                        break
+                    continue
+                else:
+                    total_skipped_date = 0  # Reset counter
 
             # Skip if already downloaded (match by date in filename)
             existing_file = self._is_invoice_downloaded(invoice_info)
@@ -681,18 +1102,9 @@ class DeliverooBot(BaseBot):
             if file_path:
                 total_downloaded += 1
 
-                # Parse date for the record
-                invoice_date = datetime.now()
-                if invoice_info.get("period"):
-                    try:
-                        for fmt in ["%d/%m/%Y", "%d %B %Y", "%d-%m-%Y"]:
-                            try:
-                                invoice_date = datetime.strptime(invoice_info["period"], fmt)
-                                break
-                            except ValueError:
-                                continue
-                    except Exception:
-                        pass
+                # Use parsed date or fallback to now
+                if not invoice_date:
+                    invoice_date = datetime.now()
 
                 downloaded_invoices.append(DownloadedInvoice(
                     platform=self.PLATFORM_NAME,
