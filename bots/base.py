@@ -229,7 +229,7 @@ class BaseBot(ABC):
             self.page.wait_for_load_state("networkidle", timeout=timeout)
         except Exception:
             pass  # Timeout is OK, page might have persistent connections
-        time.sleep(0.5)  # Extra small wait for JS rendering
+        human_sleep(0.5, 0.15)  # Extra small wait for JS rendering
 
     def dismiss_cookie_consent(self, timeout: int = 5000) -> bool:
         """
@@ -241,33 +241,43 @@ class BaseBot(ABC):
         Returns:
             True if a popup was found and dismissed, False otherwise
         """
+        # Quick pre-check: skip selector iteration if no cookie-related content
+        try:
+            content = self.page.content().lower()
+            cookie_keywords = ['cookie', 'consent', 'privacy', 'onetrust', 'cookiebot', 'gdpr']
+            if not any(kw in content for kw in cookie_keywords):
+                self.logger.debug("No cookie keywords found, skipping popup check")
+                return False
+        except Exception:
+            pass  # If content check fails, fall through to selector check
+
         # Common cookie consent button selectors (in priority order)
         cookie_selectors = [
-            # OneTrust (used by Deliveroo and many others)
+            # OneTrust (used by Deliveroo and many others) - most common first
             '#onetrust-accept-btn-handler',
             'button:has-text("Accept All Cookies")',
             'button:has-text("Accept all cookies")',
-            '#onetrust-pc-btn-handler',
-            'button[id*="onetrust"]',
 
             # Generic accept buttons (multiple languages)
             'button:has-text("Accept All")',
             'button:has-text("Accept all")',
-            'button:has-text("Accept Cookies")',
-            'button:has-text("Accept cookies")',
             'button:has-text("Accept")',
             'button:has-text("Accetta tutti")',
             'button:has-text("Accetta")',
-            'button:has-text("Accepter tout")',
-            'button:has-text("Accepter")',
-            'button:has-text("Akzeptieren")',
-            'button:has-text("Alle akzeptieren")',
 
             # CookieBot
             '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll',
             '#CybotCookiebotDialogBodyButtonAccept',
 
-            # Generic patterns
+            # Less common patterns
+            '#onetrust-pc-btn-handler',
+            'button[id*="onetrust"]',
+            'button:has-text("Accept Cookies")',
+            'button:has-text("Accept cookies")',
+            'button:has-text("Accepter tout")',
+            'button:has-text("Accepter")',
+            'button:has-text("Akzeptieren")',
+            'button:has-text("Alle akzeptieren")',
             '[data-testid="cookie-accept"]',
             '[data-testid="accept-cookies"]',
             '.cookie-consent-accept',
@@ -275,27 +285,25 @@ class BaseBot(ABC):
             '.cc-allow',
             '#cookie-accept',
             '#accept-cookies',
-
-            # Aria labels
             '[aria-label="Accept cookies"]',
             '[aria-label="Accept all cookies"]',
         ]
 
-        self.logger.info("Looking for cookie consent popup...")
+        self.logger.debug("Checking for cookie consent popup...")
 
         for selector in cookie_selectors:
             try:
                 button = self.page.locator(selector).first
-                if button.is_visible(timeout=500):
+                if button.is_visible(timeout=300):  # Reduced from 500ms
                     self.logger.info(f"Found cookie consent button: {selector}")
                     button.click()
-                    time.sleep(0.5)  # Wait for popup to dismiss
+                    human_sleep(0.5, 0.15)  # Wait for popup to dismiss
                     self.logger.info("Cookie consent dismissed")
                     return True
             except Exception:
                 continue
 
-        self.logger.info("No cookie consent popup found")
+        self.logger.debug("No cookie consent popup found")
         return False
 
     @abstractmethod

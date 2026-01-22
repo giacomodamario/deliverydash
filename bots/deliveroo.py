@@ -1,7 +1,6 @@
 """Deliveroo Partner Hub bot for downloading invoices."""
 
 import re
-import time
 from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
@@ -10,6 +9,7 @@ from urllib.parse import urlparse, parse_qs, urlencode
 from patchright.sync_api import TimeoutError as PlaywrightTimeout
 
 from .base import BaseBot, DownloadedInvoice
+from .stealth import human_sleep
 
 
 class DeliverooBot(BaseBot):
@@ -63,7 +63,7 @@ class DeliverooBot(BaseBot):
         self.logger.info(f"Waiting up to {timeout_seconds}s for Cloudflare to pass...")
 
         for attempt in range(timeout_seconds // 2):
-            time.sleep(2)
+            human_sleep(2.0, 0.4)
             content = self.page.content()
 
             if not any(indicator in content for indicator in challenge_indicators):
@@ -97,11 +97,11 @@ class DeliverooBot(BaseBot):
             if dac7_visible:
                 self.logger.info("Found DAC7 popup, pressing Escape to dismiss...")
                 self.page.keyboard.press("Escape")
-                time.sleep(0.5)
+                human_sleep(0.5, 0.15)
                 # If still visible, try clicking outside
                 if self.page.locator('text="DAC7 information required"').is_visible(timeout=500):
                     self.page.mouse.click(10, 10)
-                    time.sleep(0.3)
+                    human_sleep(0.3, 0.1)
         except Exception:
             pass
 
@@ -156,7 +156,7 @@ class DeliverooBot(BaseBot):
                 if button.is_visible(timeout=500):
                     self.logger.info(f"Found popup: {description}, dismissing...")
                     button.click()
-                    time.sleep(0.3)
+                    human_sleep(0.3, 0.1)
                     dismissed_count += 1
             except Exception:
                 continue
@@ -170,7 +170,7 @@ class DeliverooBot(BaseBot):
         """Wait for page to be ready (using domcontentloaded, not networkidle)."""
         try:
             self.page.wait_for_load_state("domcontentloaded", timeout=timeout)
-            time.sleep(1)  # Extra wait for JS rendering
+            human_sleep(1.0, 0.2)  # Extra wait for JS rendering
         except Exception:
             pass
 
@@ -254,7 +254,7 @@ class DeliverooBot(BaseBot):
             email_input = self.page.locator(self.SELECTORS["email_input"]).first
             email_input.wait_for(timeout=10000)
             email_input.click()
-            time.sleep(0.3)
+            human_sleep(0.3, 0.1)
             email_input.fill(self.email)
             self.logger.info("Email entered")
 
@@ -263,7 +263,7 @@ class DeliverooBot(BaseBot):
             password_input = self.page.locator(self.SELECTORS["password_input"]).first
             password_input.wait_for(timeout=5000)
             password_input.click()
-            time.sleep(0.3)
+            human_sleep(0.3, 0.1)
             password_input.fill(self.password)
             self.logger.info("Password entered")
 
@@ -274,7 +274,7 @@ class DeliverooBot(BaseBot):
 
             # Wait for navigation after login
             self._wait_for_page()
-            time.sleep(2)  # Extra wait for any redirects
+            human_sleep(2.0, 0.4)  # Extra wait for any redirects
 
             # Dismiss post-login popups
             self._dismiss_popups()
@@ -364,7 +364,7 @@ class DeliverooBot(BaseBot):
                     self.logger.info(f"Found Synthesis tab: {selector}")
                     tab.click()
                     self._wait_for_page()
-                    time.sleep(1)  # Wait for tab content to load
+                    human_sleep(1.0, 0.2)  # Wait for tab content to load
                     self._dismiss_popups()
                     self.screenshot("03b_synthesis_tab")
                     break
@@ -400,7 +400,7 @@ class DeliverooBot(BaseBot):
                 self.page.evaluate("""
                     document.querySelectorAll('.ReactModalPortal').forEach(el => el.innerHTML = '');
                 """)
-                time.sleep(0.5)
+                human_sleep(0.5, 0.15)
             except Exception:
                 pass
 
@@ -420,7 +420,7 @@ class DeliverooBot(BaseBot):
                         self.logger.info(f"Found store selector: '{trigger_text}'")
                         # Use force=True to bypass any intercepting elements
                         trigger.click(force=True)
-                        time.sleep(2)  # Wait for modal animation
+                        human_sleep(2.0, 0.4)  # Wait for modal animation
                         modal_opened = True
                         break
                 except Exception:
@@ -533,7 +533,7 @@ class DeliverooBot(BaseBot):
                             close_btn.click()
                         else:
                             self.page.keyboard.press("Escape")
-                    time.sleep(0.5)
+                    human_sleep(0.5, 0.15)
                 except Exception:
                     pass
 
@@ -608,7 +608,7 @@ class DeliverooBot(BaseBot):
                     trigger = self.page.locator(selector).first
                     if trigger.is_visible(timeout=2000):
                         trigger.click()
-                        time.sleep(1.5)
+                        human_sleep(1.5, 0.3)
                         modal_opened = True
                         break
                 except Exception:
@@ -647,11 +647,11 @@ class DeliverooBot(BaseBot):
                 self.logger.warning(f"Could not find radio button for {branch_name or branch_id}")
                 # Close modal and return
                 self.page.keyboard.press("Escape")
-                time.sleep(0.5)
+                human_sleep(0.5, 0.15)
                 return False
 
             # Click the Select button to confirm selection
-            time.sleep(0.5)
+            human_sleep(0.5, 0.15)
             apply_selectors = [
                 'button:has-text("Select")',
                 'button:has-text("Apply")',
@@ -704,7 +704,7 @@ class DeliverooBot(BaseBot):
                     self.logger.info(f"Invoices loaded! Found {len(csv_links)} CSV links")
                     return True
 
-            time.sleep(1)
+            human_sleep(1.0, 0.2)
             self.logger.info(f"Waiting for invoices... (attempt {attempt + 1}/{timeout})")
 
         self.logger.warning("Invoices did not load within timeout")
@@ -957,7 +957,7 @@ class DeliverooBot(BaseBot):
                 self.logger.info("Clicking next page...")
                 next_button.click()
                 self._wait_for_page()
-                time.sleep(1)
+                human_sleep(1.0, 0.2)
                 return True
         except Exception as e:
             self.logger.error(f"Error navigating to next page: {e}")
