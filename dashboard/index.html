@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeliveryDash - Platform Comparison</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+        .header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: white;
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .header h1::before {
+            content: "📊";
+        }
+        .header .period {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+        .metrics-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            padding: 20px 40px;
+            background: white;
+            border-bottom: 1px solid #eee;
+        }
+        .metric-card {
+            text-align: center;
+            padding: 20px;
+            border-radius: 12px;
+            background: #f8f9fa;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .metric-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .metric-card.deliveroo {
+            border-left: 4px solid #00CCBC;
+        }
+        .metric-card.glovo {
+            border-left: 4px solid #FFC244;
+        }
+        .metric-value {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+        .metric-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .metric-platform {
+            font-size: 11px;
+            margin-top: 5px;
+            padding: 3px 8px;
+            border-radius: 10px;
+            display: inline-block;
+        }
+        .metric-platform.deliveroo {
+            background: #00CCBC;
+            color: white;
+        }
+        .metric-platform.glovo {
+            background: #FFC244;
+            color: #333;
+        }
+        .content {
+            padding: 30px 40px;
+        }
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        .chart-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            transition: box-shadow 0.2s;
+        }
+        .chart-card:hover {
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .chart-card h3 {
+            font-size: 16px;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+        .table-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        .table-card h3 {
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #666;
+        }
+        td {
+            font-size: 14px;
+        }
+        tr:hover {
+            background: #f0f7ff;
+        }
+        tbody tr {
+            transition: background 0.15s;
+        }
+        .platform-badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .platform-badge.deliveroo {
+            background: #e0f7f4;
+            color: #00CCBC;
+        }
+        .platform-badge.glovo {
+            background: #fff5dc;
+            color: #e6a800;
+        }
+        .winner {
+            color: #2ecc71;
+            font-weight: 600;
+        }
+        .loser {
+            color: #999;
+        }
+        .insight-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 12px;
+            margin-top: 30px;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+        .insight-box li {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+        .insight-box li::before {
+            content: "💡";
+            flex-shrink: 0;
+        }
+        .insight-box h3 {
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        .insight-box ul {
+            list-style: none;
+            padding: 0;
+        }
+        .insight-box li {
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+        }
+        .insight-box li:last-child {
+            border-bottom: none;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px 40px;
+            color: #999;
+            font-size: 12px;
+            background: white;
+            border-top: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .footer-brand {
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        /* Sync status indicator */
+        .sync-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            background: rgba(255,255,255,0.1);
+            font-size: 12px;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #666;
+        }
+        .sync-status.fresh .status-dot { background: #22c55e; }
+        .sync-status.stale .status-dot { background: #f59e0b; }
+        .sync-status.error .status-dot { background: #ef4444; }
+
+        /* Period selector */
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .period-selector select {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.1);
+            color: white;
+            font-size: 13px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .period-selector select:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        .period-selector select:focus {
+            outline: none;
+            border-color: rgba(255,255,255,0.5);
+            box-shadow: 0 0 0 3px rgba(255,255,255,0.1);
+        }
+        .period-selector select:disabled {
+            opacity: 0.5;
+            cursor: wait;
+        }
+
+        /* Trend indicators */
+        .metric-trend {
+            font-size: 11px;
+            margin-top: 8px;
+            color: #666;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+        .metric-trend.up { color: #22c55e; }
+        .metric-trend.down { color: #ef4444; }
+        .metric-trend.neutral { color: #666; }
+        .trend-arrow {
+            font-weight: bold;
+            font-size: 12px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        /* Mobile responsive styles */
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 15px;
+                padding: 15px 20px;
+                text-align: center;
+            }
+            .header h1 {
+                font-size: 20px;
+            }
+            .header-controls {
+                flex-direction: column;
+                gap: 10px;
+                width: 100%;
+            }
+            .period-selector {
+                width: 100%;
+            }
+            .period-selector select {
+                width: 100%;
+                padding: 12px;
+                font-size: 16px; /* Prevent iOS zoom */
+            }
+            .sync-status {
+                justify-content: center;
+            }
+            .metrics-row {
+                grid-template-columns: repeat(2, 1fr);
+                padding: 15px 20px;
+                gap: 12px;
+            }
+            .metric-card {
+                padding: 15px;
+            }
+            .metric-value {
+                font-size: 24px;
+            }
+            .metric-label {
+                font-size: 10px;
+            }
+            .content {
+                padding: 20px;
+            }
+            .charts-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            .chart-container {
+                height: 250px;
+            }
+            .chart-card {
+                padding: 15px;
+            }
+            .chart-card h3 {
+                font-size: 14px;
+            }
+            .table-card {
+                padding: 15px;
+                overflow-x: auto;
+            }
+            table {
+                min-width: 600px;
+            }
+            th, td {
+                padding: 10px 8px;
+                font-size: 12px;
+            }
+            .insight-box {
+                padding: 20px;
+            }
+            .insight-box h3 {
+                font-size: 16px;
+            }
+            .insight-box li {
+                font-size: 13px;
+                padding: 6px 0;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .metrics-row {
+                grid-template-columns: 1fr;
+            }
+            .metric-card {
+                display: flex;
+                align-items: center;
+                gap: 15px;
+                text-align: left;
+            }
+            .metric-value {
+                font-size: 28px;
+                margin-bottom: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>DeliveryDash</h1>
+            <div class="period">Poke House Delivery Analytics</div>
+        </div>
+        <div class="header-controls">
+            <div class="period-selector">
+                <select id="periodSelect" onchange="changePeriod(this.value)">
+                    <option value="7">Last 7 days</option>
+                    <option value="14">Last 14 days</option>
+                    <option value="30">Last 30 days</option>
+                </select>
+            </div>
+            <div class="sync-status" id="syncStatus">
+                <span class="status-dot"></span>
+                <span class="status-text">Loading...</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="metrics-row">
+        <div class="metric-card">
+            <div class="metric-value" id="total-orders">-</div>
+            <div class="metric-label">Total Orders</div>
+            <div class="metric-trend" id="orders-trend"></div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value" id="total-revenue">-</div>
+            <div class="metric-label">Total Revenue</div>
+            <div class="metric-trend" id="revenue-trend"></div>
+        </div>
+        <div class="metric-card deliveroo">
+            <div class="metric-value" id="d-orders">-</div>
+            <div class="metric-label">Deliveroo Orders</div>
+            <span class="metric-platform deliveroo">Deliveroo</span>
+        </div>
+        <div class="metric-card glovo">
+            <div class="metric-value" id="g-orders">-</div>
+            <div class="metric-label">Glovo Orders</div>
+            <span class="metric-platform glovo">Glovo</span>
+        </div>
+    </div>
+
+    <div class="content">
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3>Orders by Store</h3>
+                <div class="chart-container">
+                    <canvas id="ordersChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3>Revenue by Store (EUR)</h3>
+                <div class="chart-container">
+                    <canvas id="revenueChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3>Net Margin by Store (%)</h3>
+                <div class="chart-container">
+                    <canvas id="marginChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3>Market Share by Orders</h3>
+                <div class="chart-container">
+                    <canvas id="shareChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-card">
+            <h3>Store-by-Store Comparison</h3>
+            <table id="comparisonTable">
+                <thead>
+                    <tr>
+                        <th>City</th>
+                        <th>Platform</th>
+                        <th>Orders</th>
+                        <th>Revenue</th>
+                        <th>Net Payout</th>
+                        <th>Margin</th>
+                        <th>Avg Basket</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div class="insight-box">
+            <h3>Key Insights</h3>
+            <ul id="insightsList">
+                <li>Loading insights...</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="footer">
+        <span class="footer-brand">🍜 Poke House Analytics</span>
+        <span id="last-updated">Loading...</span>
+    </div>
+
+    <script>
+        // Current period and chart instances
+        let currentPeriod = 7;
+        let chartInstances = {};
+
+        // Dynamic data loading
+        async function loadDashboard(days = 7) {
+            console.log('loadDashboard called with days:', days);
+            currentPeriod = days;
+            try {
+                // Try period-specific file first, fall back to default
+                let response = await fetch(`data-${days}d.json`);
+                console.log('Fetch response for data-' + days + 'd.json:', response.status);
+                if (!response.ok) {
+                    response = await fetch('data.json');
+                    console.log('Fallback fetch response:', response.status);
+                }
+                if (!response.ok) throw new Error('No data file found');
+                const data = await response.json();
+                console.log('Data loaded successfully, stores:', data.stores?.length);
+                renderDashboard(data);
+            } catch (e) {
+                console.log('No dynamic data, using fallback:', e.message);
+                renderDashboard(FALLBACK_DATA);
+            }
+        }
+
+        // Period selector handler
+        async function changePeriod(days) {
+            document.getElementById('periodSelect').disabled = true;
+            await loadDashboard(parseInt(days));
+            document.getElementById('periodSelect').disabled = false;
+        }
+
+        // Update sync status indicator
+        function updateSyncStatus(data) {
+            const statusEl = document.getElementById('syncStatus');
+            const lastSync = data.last_sync?.glovo?.completed_at || data.last_sync?.deliveroo?.completed_at;
+
+            if (!lastSync) {
+                statusEl.className = 'sync-status error';
+                statusEl.querySelector('.status-text').textContent = 'No sync data';
+                return;
+            }
+
+            const syncDate = new Date(lastSync);
+            const hoursAgo = (Date.now() - syncDate) / (1000 * 60 * 60);
+
+            if (hoursAgo < 24) {
+                statusEl.className = 'sync-status fresh';
+                const timeText = hoursAgo < 1 ? `${Math.round(hoursAgo * 60)}m ago` : `${Math.round(hoursAgo)}h ago`;
+                statusEl.querySelector('.status-text').textContent = `Synced ${timeText}`;
+            } else {
+                statusEl.className = 'sync-status stale';
+                statusEl.querySelector('.status-text').textContent = `Stale: ${Math.round(hoursAgo)}h ago`;
+            }
+        }
+
+        // Render trend indicator
+        function renderTrend(elementId, changePct) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+
+            if (changePct === null || changePct === undefined) {
+                el.innerHTML = '';
+                return;
+            }
+
+            const isUp = changePct > 0;
+            const isNeutral = changePct === 0;
+            const arrow = isUp ? '↑' : (isNeutral ? '→' : '↓');
+            const className = isUp ? 'up' : (isNeutral ? 'neutral' : 'down');
+            const sign = isUp ? '+' : '';
+
+            el.className = `metric-trend ${className}`;
+            el.innerHTML = `<span class="trend-arrow">${arrow}</span><span>${sign}${changePct}% vs prev</span>`;
+        }
+
+        // Render dynamic insights
+        function renderInsights(data, chartData) {
+            const list = document.getElementById('insightsList');
+            const insights = [];
+
+            // Calculate totals
+            let dTotal = {orders: 0, revenue: 0, payout: 0};
+            let gTotal = {orders: 0, revenue: 0, payout: 0};
+
+            if (chartData.cities) {
+                chartData.cities.forEach(city => {
+                    if (chartData.deliveroo[city]) {
+                        dTotal.orders += chartData.deliveroo[city].orders || 0;
+                        dTotal.revenue += chartData.deliveroo[city].revenue || 0;
+                        dTotal.payout += chartData.deliveroo[city].net_payout || 0;
+                    }
+                    if (chartData.glovo[city]) {
+                        gTotal.orders += chartData.glovo[city].orders || 0;
+                        gTotal.revenue += chartData.glovo[city].revenue || 0;
+                        gTotal.payout += chartData.glovo[city].net_payout || 0;
+                    }
+                });
+            }
+
+            // Platform comparison
+            const totalOrders = dTotal.orders + gTotal.orders;
+            if (gTotal.orders > 0 && dTotal.orders > 0) {
+                const ratio = (gTotal.orders / dTotal.orders).toFixed(1);
+                insights.push(`<strong>Volume:</strong> Glovo leads with ${ratio}x more orders (${gTotal.orders.toLocaleString()} vs ${dTotal.orders.toLocaleString()})`);
+            } else if (gTotal.orders > 0) {
+                insights.push(`<strong>Platform:</strong> Glovo only with ${gTotal.orders.toLocaleString()} orders`);
+            }
+
+            // Margin comparison
+            const gMargin = gTotal.revenue > 0 ? (gTotal.payout / gTotal.revenue * 100) : 0;
+            const dMargin = dTotal.revenue > 0 ? (dTotal.payout / dTotal.revenue * 100) : 0;
+            if (gMargin > 0 && dMargin > 0) {
+                const marginDiff = Math.abs(gMargin - dMargin).toFixed(1);
+                const better = gMargin > dMargin ? 'Glovo' : 'Deliveroo';
+                insights.push(`<strong>Margins:</strong> ${better} has ${marginDiff}pp better net margin`);
+            }
+
+            // Total revenue
+            const totalRevenue = (data.summary?.total_revenue || (dTotal.revenue + gTotal.revenue));
+            if (totalRevenue > 0) {
+                insights.push(`<strong>Revenue:</strong> €${totalRevenue.toLocaleString()} total (${totalOrders.toLocaleString()} orders)`);
+            }
+
+            // Average basket
+            if (totalOrders > 0) {
+                const avgBasket = (totalRevenue / totalOrders).toFixed(2);
+                insights.push(`<strong>Avg Basket:</strong> €${avgBasket} per order`);
+            }
+
+            // Top store
+            if (data.stores && data.stores.length > 0) {
+                const top = data.stores[0];
+                const storeName = top.name.length > 35 ? top.name.substring(0, 35) + '...' : top.name;
+                insights.push(`<strong>Top Store:</strong> ${storeName} (${top.orders} orders)`);
+            }
+
+            // Render
+            if (insights.length === 0) {
+                list.innerHTML = '<li>No insights available</li>';
+            } else {
+                list.innerHTML = insights.map(i => `<li>${i}</li>`).join('');
+            }
+        }
+
+        function renderDashboard(data) {
+            console.log('renderDashboard called with:', data);
+
+            // Update last updated timestamp
+            if (data.generated_at) {
+                const date = new Date(data.generated_at);
+                document.getElementById('last-updated').textContent =
+                    `Last updated: ${date.toLocaleString()}`;
+            }
+
+            // Update period subtitle with date range
+            if (data.period) {
+                const start = new Date(data.period.start);
+                const end = new Date(data.period.end);
+                const options = { month: 'short', day: 'numeric' };
+                document.querySelector('.header .period').textContent =
+                    `${start.toLocaleDateString('en-US', options)} - ${end.toLocaleDateString('en-US', options)} | Poke House Analytics`;
+            }
+
+            // Update sync status
+            updateSyncStatus(data);
+
+            // Update total metrics with trends
+            if (data.summary) {
+                document.getElementById('total-orders').textContent = data.summary.total_orders?.toLocaleString() || '-';
+                document.getElementById('total-revenue').textContent = '€' + (data.summary.total_revenue?.toLocaleString() || '-');
+            }
+            if (data.trends) {
+                renderTrend('orders-trend', data.trends.orders_change_pct);
+                renderTrend('revenue-trend', data.trends.revenue_change_pct);
+            }
+
+            // Convert new data format to chart-compatible format
+            let chartData;
+            if (data.platforms) {
+                // New format from generate_dashboard.py
+                chartData = convertFromNewFormat(data);
+                console.log('Converted chart data:', chartData);
+            } else {
+                // Legacy format (fallback)
+                chartData = data;
+                console.log('Using legacy format');
+            }
+
+            // Render insights
+            renderInsights(data, chartData);
+
+            // Render charts
+            console.log('Calling renderCharts with cities:', chartData.cities);
+            renderCharts(chartData);
+        }
+
+        function convertFromNewFormat(data) {
+            // City code to name mapping
+            const cityCodeMap = {
+                'MIL': 'Milano',
+                'CAT': 'Catania',
+                'NAP': 'Napoli',
+                'TOR': 'Torino',
+                'VER': 'Verona',
+                'PMO': 'Palermo',
+                'PMF': 'Firenze',
+                'VBS': 'Brescia',
+                'ROM': 'Roma',
+                'BGY': 'Bergamo',
+                'PAD': 'Padova',
+                'BOL': 'Bologna',
+                'GEN': 'Genova'
+            };
+
+            // Extract city code from store name like "Poke House (Via X) [MIL]"
+            function extractCity(storeName) {
+                const match = storeName.match(/\[([A-Z]{2,4})\]$/);
+                if (match) {
+                    return cityCodeMap[match[1]] || match[1];
+                }
+                return 'Other';
+            }
+
+            // Aggregate stores by city and platform
+            const cityData = {};
+            for (const store of (data.stores || [])) {
+                const city = extractCity(store.name || '');
+                const platform = (store.platform || '').toLowerCase();
+
+                if (!cityData[city]) {
+                    cityData[city] = { deliveroo: null, glovo: null };
+                }
+
+                // Aggregate values for same city/platform
+                if (!cityData[city][platform]) {
+                    cityData[city][platform] = {
+                        orders: 0, revenue: 0, net_payout: 0
+                    };
+                }
+                cityData[city][platform].orders += store.orders || 0;
+                cityData[city][platform].revenue += store.revenue || 0;
+                cityData[city][platform].net_payout += store.payout || 0;
+            }
+
+            // Calculate derived metrics and build output
+            const cities = Object.keys(cityData).sort();
+            const deliveroo = {};
+            const glovo = {};
+
+            for (const city of cities) {
+                if (cityData[city].deliveroo && cityData[city].deliveroo.orders > 0) {
+                    const d = cityData[city].deliveroo;
+                    deliveroo[city] = {
+                        orders: d.orders,
+                        revenue: d.revenue,
+                        net_payout: d.net_payout,
+                        margin: d.revenue > 0 ? (d.net_payout / d.revenue * 100) : 0,
+                        basket: d.orders > 0 ? (d.revenue / d.orders) : 0
+                    };
+                }
+                if (cityData[city].glovo && cityData[city].glovo.orders > 0) {
+                    const g = cityData[city].glovo;
+                    glovo[city] = {
+                        orders: g.orders,
+                        revenue: g.revenue,
+                        net_payout: g.net_payout,
+                        margin: g.revenue > 0 ? (g.net_payout / g.revenue * 100) : 0,
+                        basket: g.orders > 0 ? (g.revenue / g.orders) : 0
+                    };
+                }
+            }
+
+            return {
+                cities: cities,
+                deliveroo: deliveroo,
+                glovo: glovo
+            };
+        }
+
+        // Fallback data when data.json is not available
+        const FALLBACK_DATA = {
+            "cities": ["Brescia", "Catania", "Firenze", "Milano", "Napoli", "Palermo", "Roma", "Torino", "Verona"],
+            "deliveroo": {
+                "Brescia": {"orders": 259, "revenue": 5084.06, "net_payout": 3533.09, "margin": 69.49, "basket": 19.63},
+                "Catania": {"orders": 112, "revenue": 2297.92, "net_payout": 1597.05, "margin": 69.50, "basket": 20.52},
+                "Firenze": {"orders": 60, "revenue": 1066.90, "net_payout": 741.44, "margin": 69.49, "basket": 17.78},
+                "Milano": {"orders": 153, "revenue": 3008.36, "net_payout": 2092.62, "margin": 69.56, "basket": 19.66},
+                "Napoli": {"orders": 39, "revenue": 724.86, "net_payout": 503.76, "margin": 69.50, "basket": 18.59},
+                "Palermo": {"orders": 19, "revenue": 319.60, "net_payout": 222.11, "margin": 69.50, "basket": 16.82},
+                "Roma": {"orders": 41, "revenue": 760.74, "net_payout": 530.98, "margin": 69.80, "basket": 18.55},
+                "Torino": {"orders": 50, "revenue": 1026.80, "net_payout": 715.35, "margin": 69.67, "basket": 20.54},
+                "Verona": {"orders": 172, "revenue": 3274.40, "net_payout": 2275.47, "margin": 69.49, "basket": 19.04}
+            },
+            "glovo": {
+                "Brescia": {"orders": 212, "revenue": 4028.70, "net_payout": 3416.52, "margin": 84.80, "basket": 19.00},
+                "Catania": {"orders": 601, "revenue": 12378.10, "net_payout": 10775.21, "margin": 87.05, "basket": 20.60},
+                "Firenze": {"orders": 100, "revenue": 1818.30, "net_payout": 1677.46, "margin": 92.25, "basket": 18.18},
+                "Milano": {"orders": 216, "revenue": 3530.00, "net_payout": 3176.53, "margin": 89.99, "basket": 16.34},
+                "Napoli": {"orders": 269, "revenue": 5520.50, "net_payout": 4768.73, "margin": 86.38, "basket": 20.52},
+                "Palermo": {"orders": 112, "revenue": 2144.90, "net_payout": 1681.94, "margin": 78.42, "basket": 19.15},
+                "Roma": {"orders": 77, "revenue": 1481.20, "net_payout": 1336.38, "margin": 90.22, "basket": 19.24},
+                "Torino": {"orders": 359, "revenue": 7030.50, "net_payout": 6498.74, "margin": 92.44, "basket": 19.58},
+                "Verona": {"orders": 206, "revenue": 3894.40, "net_payout": 3470.44, "margin": 89.11, "basket": 18.90}
+            }
+        };
+
+        function renderCharts(DATA) {
+            // Destroy existing charts before creating new ones
+            Object.values(chartInstances).forEach(chart => {
+                if (chart) chart.destroy();
+            });
+            chartInstances = {};
+
+            // Clear table body
+            document.querySelector('#comparisonTable tbody').innerHTML = '';
+
+            // Calculate totals
+            let dTotal = {orders: 0, revenue: 0, net_payout: 0};
+            let gTotal = {orders: 0, revenue: 0, net_payout: 0};
+
+            DATA.cities.forEach(city => {
+                if (DATA.deliveroo[city]) {
+                    dTotal.orders += DATA.deliveroo[city].orders;
+                    dTotal.revenue += DATA.deliveroo[city].revenue;
+                    dTotal.net_payout += DATA.deliveroo[city].net_payout;
+                }
+                if (DATA.glovo[city]) {
+                    gTotal.orders += DATA.glovo[city].orders;
+                    gTotal.revenue += DATA.glovo[city].revenue;
+                    gTotal.net_payout += DATA.glovo[city].net_payout;
+                }
+            });
+
+            // Update header metrics
+            document.getElementById('d-orders').textContent = dTotal.orders.toLocaleString();
+            document.getElementById('g-orders').textContent = gTotal.orders.toLocaleString();
+
+            // Chart colors
+            const deliverooColor = '#00CCBC';
+            const glovoColor = '#FFC244';
+
+            // Orders Chart
+            chartInstances.orders = new Chart(document.getElementById('ordersChart'), {
+            type: 'bar',
+            data: {
+                labels: DATA.cities,
+                datasets: [
+                    {
+                        label: 'Deliveroo',
+                        data: DATA.cities.map(c => DATA.deliveroo[c]?.orders || 0),
+                        backgroundColor: deliverooColor
+                    },
+                    {
+                        label: 'Glovo',
+                        data: DATA.cities.map(c => DATA.glovo[c]?.orders || 0),
+                        backgroundColor: glovoColor
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'top' } }
+            }
+        });
+
+        // Revenue Chart
+        chartInstances.revenue = new Chart(document.getElementById('revenueChart'), {
+            type: 'bar',
+            data: {
+                labels: DATA.cities,
+                datasets: [
+                    {
+                        label: 'Deliveroo',
+                        data: DATA.cities.map(c => DATA.deliveroo[c]?.revenue || 0),
+                        backgroundColor: deliverooColor
+                    },
+                    {
+                        label: 'Glovo',
+                        data: DATA.cities.map(c => DATA.glovo[c]?.revenue || 0),
+                        backgroundColor: glovoColor
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'top' } }
+            }
+        });
+
+        // Margin Chart
+        chartInstances.margin = new Chart(document.getElementById('marginChart'), {
+            type: 'bar',
+            data: {
+                labels: DATA.cities,
+                datasets: [
+                    {
+                        label: 'Deliveroo',
+                        data: DATA.cities.map(c => DATA.deliveroo[c]?.margin || 0),
+                        backgroundColor: deliverooColor
+                    },
+                    {
+                        label: 'Glovo',
+                        data: DATA.cities.map(c => DATA.glovo[c]?.margin || 0),
+                        backgroundColor: glovoColor
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'top' } },
+                scales: { y: { min: 0, max: 100 } }
+            }
+        });
+
+        // Market Share Pie
+        chartInstances.share = new Chart(document.getElementById('shareChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Deliveroo', 'Glovo'],
+                datasets: [{
+                    data: [dTotal.orders, gTotal.orders],
+                    backgroundColor: [deliverooColor, glovoColor]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+
+        // Populate table
+        const tbody = document.querySelector('#comparisonTable tbody');
+        DATA.cities.forEach(city => {
+            const d = DATA.deliveroo[city];
+            const g = DATA.glovo[city];
+
+            // Deliveroo row
+            if (d) {
+                const dWinner = d.orders > (g?.orders || 0);
+                tbody.innerHTML += `
+                    <tr>
+                        <td><strong>${city}</strong></td>
+                        <td><span class="platform-badge deliveroo">Deliveroo</span></td>
+                        <td class="${dWinner ? 'winner' : 'loser'}">${d.orders}</td>
+                        <td>€${d.revenue.toFixed(2)}</td>
+                        <td>€${d.net_payout.toFixed(2)}</td>
+                        <td>${d.margin.toFixed(1)}%</td>
+                        <td>€${d.basket.toFixed(2)}</td>
+                    </tr>
+                `;
+            }
+
+            // Glovo row
+            if (g) {
+                const gWinner = g.orders > (d?.orders || 0);
+                tbody.innerHTML += `
+                    <tr>
+                        <td></td>
+                        <td><span class="platform-badge glovo">Glovo</span></td>
+                        <td class="${gWinner ? 'winner' : 'loser'}">${g.orders}</td>
+                        <td>€${g.revenue.toFixed(2)}</td>
+                        <td>€${g.net_payout.toFixed(2)}</td>
+                        <td>${g.margin.toFixed(1)}%</td>
+                        <td>€${g.basket.toFixed(2)}</td>
+                    </tr>
+                `;
+            }
+        });
+        }
+
+        // Error display
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            const errorDiv = document.createElement('div');
+            errorDiv.style.cssText = 'position:fixed;top:0;left:0;right:0;background:red;color:white;padding:20px;z-index:9999;';
+            errorDiv.innerHTML = '<strong>JS Error:</strong> ' + msg + '<br>Line: ' + lineNo;
+            document.body.prepend(errorDiv);
+            return false;
+        };
+
+        // Initialize dashboard on page load
+        console.log('Starting dashboard initialization...');
+        console.log('Chart.js loaded:', typeof Chart !== 'undefined');
+        loadDashboard().catch(err => {
+            console.error('Dashboard load error:', err);
+            document.body.innerHTML = '<div style="padding:40px;color:red;"><h1>Error Loading Dashboard</h1><pre>' + err.stack + '</pre></div>';
+        });
+    </script>
+</body>
+</html>
