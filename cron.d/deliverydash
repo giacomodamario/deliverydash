@@ -1,0 +1,24 @@
+# DeliveryDash Cron Configuration
+# Copy to /etc/cron.d/deliverydash and adjust paths as needed
+
+# Environment variables
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+DISPLAY=:1
+
+# Glovo session keepalive - every 90 minutes (approximately)
+# Note: */90 is invalid (minutes is 0-59), so we use two entries
+# First entry: every 3 hours on the hour (0:00, 3:00, 6:00, 9:00, 12:00, 15:00, 18:00, 21:00)
+0 */3 * * * root cd /root/deliverydash && ./venv/bin/python glovo_keepalive.py >> logs/keepalive.log 2>&1
+
+# Second entry: offset by 90 minutes (1:30, 4:30, 7:30, 10:30, 13:30, 16:30, 19:30, 22:30)
+30 1,4,7,10,13,16,19,22 * * * root cd /root/deliverydash && ./venv/bin/python glovo_keepalive.py >> logs/keepalive.log 2>&1
+
+# Deliveroo session keepalive - every 12 hours (sessions last longer than Glovo)
+0 0,12 * * * root cd /root/deliverydash && ./venv/bin/python deliveroo_keepalive.py >> logs/keepalive.log 2>&1
+
+# Daily sync at 6 AM (before business hours)
+0 6 * * * root cd /root/deliverydash && DISPLAY=:1 ./venv/bin/python sync_all.py >> logs/sync.log 2>&1
+
+# Weekly full sync on Sunday at 3 AM (14 days for complete history)
+0 3 * * 0 root cd /root/deliverydash && DISPLAY=:1 ./venv/bin/python sync_all.py --days 14 >> logs/sync.log 2>&1
