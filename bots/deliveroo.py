@@ -87,11 +87,31 @@ class DeliverooBot(BaseBot):
         except Exception as e:
             self.logger.warning(f"Could not extract orgId: {e}")
 
+    # Deliveroo-specific popup selectors (extends BaseBot.COMMON_POPUP_SELECTORS)
+    PLATFORM_POPUP_SELECTORS = [
+        # NPS/Survey popups
+        ('button:has-text("Close")', "Close button"),
+        ('button:has-text("Chiudi")', "Chiudi button"),
+        ('[aria-label="Close survey"]', "Survey close"),
+        ('[data-testid="nps-close"]', "NPS close"),
+        ('[data-testid="survey-close"]', "Survey close"),
+        ('[class*="nps"] button[aria-label="Close"]', "NPS close button"),
+        ('[class*="survey"] button[aria-label="Close"]', "Survey close button"),
+        ('[class*="feedback"] button[aria-label="Close"]', "Feedback close"),
+        ('button:has-text("No grazie")', "No grazie button"),
+
+        # Survey/feedback widget
+        ('[class*="widget"] button:has-text("Close")', "Widget close"),
+        ('[aria-label="close"]', "aria close"),
+
+        # Dialog close
+        ('[role="dialog"] button[aria-label="Close"]', "Dialog close"),
+        ('.modal button:has-text("×")', "Modal X button"),
+    ]
+
     def _dismiss_popups(self):
         """Dismiss Deliveroo-specific popups (announcements, surveys, modals)."""
-        self.logger.info("Checking for popups to dismiss...")
-
-        # First: Handle DAC7 tax compliance popup (has no close button)
+        # First: Handle DAC7 tax compliance popup (has no close button - special case)
         try:
             dac7_visible = self.page.locator('text="DAC7 information required"').is_visible(timeout=1000)
             if dac7_visible:
@@ -105,66 +125,10 @@ class DeliverooBot(BaseBot):
         except Exception:
             pass
 
-        # List of popup close actions to try
-        popup_selectors = [
-            # "What's new?" modal - X button in top right
-            ('button[aria-label="Close"]', "What's new modal"),
-            ('button[aria-label="Chiudi"]', "What's new modal (IT)"),
-            ('[data-testid="modal-close"]', "Modal close button"),
-            ('.modal-close', "Modal close"),
-
-            # "We've renamed Hub" announcement - just close it
-            ('button:has-text("Got it")', "Got it button"),
-            ('button:has-text("Capito")', "Capito button"),
-            ('button:has-text("OK")', "OK button"),
-            ('button:has-text("Dismiss")', "Dismiss button"),
-
-            # NPS survey popup (bottom of page)
-            ('button:has-text("Close")', "Close button"),
-            ('button:has-text("Chiudi")', "Chiudi button"),
-            ('[aria-label="Close survey"]', "Survey close"),
-            ('[data-testid="nps-close"]', "NPS close"),
-            ('[data-testid="survey-close"]', "Survey close"),
-            ('[class*="nps"] button[aria-label="Close"]', "NPS close button"),
-            ('[class*="survey"] button[aria-label="Close"]', "Survey close button"),
-            ('[class*="feedback"] button[aria-label="Close"]', "Feedback close"),
-            ('button:has-text("No thanks")', "No thanks button"),
-            ('button:has-text("No grazie")', "No grazie button"),
-            ('button:has-text("Maybe later")', "Maybe later button"),
-            ('button:has-text("Not now")', "Not now button"),
-            ('button:has-text("Skip")', "Skip button"),
-
-            # Generic modal/dialog close buttons
-            ('[role="dialog"] button[aria-label="Close"]', "Dialog close"),
-            ('.modal button:has-text("×")', "Modal X button"),
-            ('button:has-text("×")', "X button"),
-            ('button:has-text("✕")', "Close symbol"),
-
-            # Bottom survey/feedback widget
-            ('iframe[title*="survey"]', "Survey iframe - will try to close parent"),
-            ('[class*="widget"] button:has-text("Close")', "Widget close"),
-
-            # Medallia NPS survey (bottom popup)
-            ('button:has-text("Close")', "Close button"),
-            ('[aria-label="close"]', "aria close"),
-        ]
-
-        dismissed_count = 0
-        for selector, description in popup_selectors:
-            try:
-                button = self.page.locator(selector).first
-                if button.is_visible(timeout=500):
-                    self.logger.info(f"Found popup: {description}, dismissing...")
-                    button.click()
-                    human_sleep(0.3, 0.1)
-                    dismissed_count += 1
-            except Exception:
-                continue
-
-        if dismissed_count > 0:
-            self.logger.info(f"Dismissed {dismissed_count} popup(s)")
-        else:
-            self.logger.info("No popups found")
+        # Use shared popup dismissal from BaseBot
+        dismissed = self.dismiss_popups()
+        if dismissed > 0:
+            self.logger.info(f"Dismissed {dismissed} popup(s)")
 
     def _wait_for_page(self, timeout: int = 10000):
         """Wait for page to be ready (using domcontentloaded, not networkidle)."""

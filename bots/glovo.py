@@ -541,54 +541,20 @@ class GlovoBot(BaseBot):
             self.logger.error(f"Error during 2FA: {e}")
             return False
 
+    # Glovo-specific popup selectors (extends BaseBot.COMMON_POPUP_SELECTORS)
+    PLATFORM_POPUP_SELECTORS = [
+        # Spanish/Italian language buttons
+        ('button:has-text("Entendido")', "Entendido"),
+        ('button:has-text("Accept")', "Accept"),
+        ('button:has-text("Accetta")', "Accetta"),
+        ('button:has-text("Later")', "Later"),
+    ]
+
     def _dismiss_popups(self):
-        """Dismiss Glovo-specific popups (announcements, modals, etc.)."""
-        self.logger.debug("Checking for popups...")
-
-        popup_selectors = [
-            # Generic close buttons
-            ('button[aria-label="Close"]', "Close button"),
-            ('button[aria-label="Chiudi"]', "Close button (IT)"),
-            ('button[aria-label="Cerrar"]', "Close button (ES)"),
-            ('[data-testid="modal-close"]', "Modal close"),
-            ('.modal-close', "Modal close class"),
-
-            # OK/Got it buttons
-            ('button:has-text("Got it")', "Got it"),
-            ('button:has-text("OK")', "OK button"),
-            ('button:has-text("Capito")', "Capito"),
-            ('button:has-text("Entendido")', "Entendido"),
-            ('button:has-text("Accept")', "Accept"),
-            ('button:has-text("Accetta")', "Accetta"),
-
-            # Skip/Later buttons
-            ('button:has-text("Skip")', "Skip"),
-            ('button:has-text("Later")', "Later"),
-            ('button:has-text("Not now")', "Not now"),
-            ('button:has-text("Maybe later")', "Maybe later"),
-
-            # Generic dialog close
-            ('[role="dialog"] button:has-text("×")', "Dialog X"),
-            ('button:has-text("×")', "X button"),
-            ('button:has-text("✕")', "Close symbol"),
-        ]
-
-        dismissed_count = 0
-        for selector, description in popup_selectors:
-            try:
-                button = self.page.locator(selector).first
-                if button.is_visible(timeout=500):
-                    self.logger.debug(f"Dismissing popup: {description}")
-                    button.click()
-                    human_sleep(0.3, 0.4)  # Randomized wait after dismissing
-                    dismissed_count += 1
-            except Exception:
-                continue
-
-        if dismissed_count > 0:
-            self.logger.debug(f"Dismissed {dismissed_count} popup(s)")
-        else:
-            self.logger.debug("No popups found")
+        """Dismiss Glovo-specific popups using shared BaseBot logic."""
+        dismissed = self.dismiss_popups()
+        if dismissed > 0:
+            self.logger.debug(f"Dismissed {dismissed} popup(s)")
 
     def login(self) -> bool:
         """Log into Glovo Partner Portal with human-like behavior."""
